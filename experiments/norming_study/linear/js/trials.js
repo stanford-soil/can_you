@@ -218,8 +218,13 @@ function buildSliderGrid(parentEl, gW, gH, yesColor, baseColor, opts) {
         renderFigures();
     };
 
+    ctrl.setInteractable = function(enabled) {
+        sliderEl.style.pointerEvents = enabled ? '' : 'none';
+    };
+
     ctrl.setInviteActive = function(active) {
         sliderEl.classList.toggle('wl-slider--invite', active);
+        if (active) ctrl.setInteractable(true);
     };
 
     ctrl.setSliderVisible = function(visible) {

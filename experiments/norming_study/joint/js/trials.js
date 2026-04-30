@@ -419,6 +419,7 @@ function buildWaffleGridVanilla(parentEl, size, axisOrder, palette, opts) {
         wrapper.dataset.invitePulse = active ? 'true' : 'false';
         if (active) {
             knob.style.animation = ''; // clear snapPulse so invitePulse takes over
+            figArea.style.pointerEvents = '';  // unlock when it's their turn
         }
     };
     ctrl.setPointerEvents = function(enabled) {

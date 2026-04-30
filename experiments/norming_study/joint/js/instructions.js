@@ -63,7 +63,7 @@ function getInstructionPagesWaffle(axisOrder) {
 
 
 // ---- per-page gate times (ms) ----
-var INSTR_GATES = [2500, 36000, 3000];
+var INSTR_GATES = [2500, 35000, 3000];
 var _instrDemoCleanup = null;  // holds cleanup fn for demo grid
 
 // called from main_waffle.js on_load + nav handler
@@ -314,6 +314,9 @@ function initInstrDemoGrid(axisOrder, colorMap) {
         updateDots(9);
         showReplayBtn();
     };
+
+    // locked until invite at step 8
+    grid.setPointerEvents(false);
 
     // kick off the sequence
     goStep(0);

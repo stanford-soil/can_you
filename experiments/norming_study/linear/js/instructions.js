@@ -13,7 +13,7 @@ function getInstructionPagesWaffle(axisOrder) {
                 <div class="w-instr-body">
                     <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both;">In this study, you'll see a series of everyday scenarios.</p>
                     <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 650ms both;">For each scenario, imagine <b>100 random people</b> are all in that situation.</p>
-                    <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 1000ms both;">You'll estimate how many of them would be <em>${dim1}</em> and <em>${dim2}</em> to do the thing being asked — then how many of those would be <em>${dim2}</em> to do it.</p>
+                    <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 1000ms both;">You'll estimate how many of them would be <em>${dim1}</em> and <em>${dim2}</em> to do the thing being asked.</p>
                 </div>
                 <hr class="w-hr">
                 <div class="w-instr-footer"></div>
@@ -61,7 +61,7 @@ function getInstructionPagesWaffle(axisOrder) {
 
 
 // ---- per-page gate times (ms) ----
-var INSTR_GATES = [2500, 24000, 3000];
+var INSTR_GATES = [2500, 23000, 3000];
 var _instrDemoCleanup = null;
 
 // called from main.js on_load + nav handler
@@ -222,6 +222,7 @@ function initInstrDemoGrid(axisOrder, colorMap) {
 
             case 1:
                 grid.setSliderVisible(true);
+                grid.setInteractable(false);  // locked until invite at step 5
                 setCaption('<div style="animation:fadeIn 500ms ease both;">You\'ll use a slider like this one to give your answer.</div>');
                 break;
 
@@ -241,11 +242,21 @@ function initInstrDemoGrid(axisOrder, colorMap) {
                 break;
 
             case 5:
+                setCaption('');
                 driftToCount(40, 1200, function() {
                     if (!hasInteracted) {
                         grid.setInviteActive(true);
                         setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Now try dragging the slider yourself!</div>');
                         showReplayBtn();
+                        // forceInteract() ran at step 3 so onInteract won't fire again;
+                        // use onChange to catch the first user drag after the invite
+                        grid.onChange = function() {
+                            if (hasInteracted) return;
+                            hasInteracted = true;
+                            grid.setInviteActive(false);
+                            setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like.</div>');
+                            updateDots(6);
+                        };
                     }
                 });
                 break;
