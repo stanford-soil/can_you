@@ -2,25 +2,127 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Loading experiment...</title>
+  <title>Everyday Decisions Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <style>
-    body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    p { font-size: 1.1em; color: #444; }
+    :root {
+      --bg:       #FBFAF7;
+      --card:     #FFFFFF;
+      --ink:      #1F1A14;
+      --muted:    #6E665C;
+      --hairline: #E8E2D5;
+      --accent:   #1F5572;
+      --serif:    'Source Serif 4', Georgia, serif;
+      --sans:     'Inter', system-ui, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      font-family: var(--sans);
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: 0 2px 24px rgba(31,26,20,0.08);
+      padding: 44px 48px 40px;
+      max-width: 480px;
+      width: calc(100% - 32px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .overline {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    h1 {
+      font-family: var(--serif);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--ink);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .rule {
+      width: 32px;
+      height: 2px;
+      background: var(--hairline);
+      border-radius: 1px;
+      margin: 16px auto 20px;
+    }
+    .body-text {
+      font-size: 15px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.65;
+      margin-bottom: 28px;
+    }
+    .turnstile-wrap {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    #captcha-proceed {
+      font-family: var(--sans);
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      padding: 12px 32px;
+      cursor: pointer;
+      display: none;
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+    #captcha-proceed:hover { opacity: 0.88; transform: translateY(-1px); }
+    #captcha-proceed:active { transform: translateY(0); }
+    .loading-msg {
+      font-size: 14px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 8px;
+      min-height: 20px;
+    }
   </style>
 </head>
 <body>
-  <p>Loading experiment, please wait...</p>
+  <div class="card">
+    <div class="overline">Stanford · Gweon Lab</div>
+    <h1>Everyday Decisions</h1>
+    <div class="rule"></div>
+    <p class="body-text">
+      Before we begin, please complete a quick security check to confirm you're a real person.
+    </p>
+    <div class="turnstile-wrap">
+      <div id="turnstile-widget"></div>
+    </div>
+    <button id="captcha-proceed">Continue →</button>
+    <p class="loading-msg" id="loading-msg"></p>
+  </div>
+
   <script>
-    // Routing DataPipe ID — used only for sequential condition assignment (not data saving).
-    // Must be a separate DataPipe experiment with n_conditions set to ASSIGNMENT_LIST.length.
-    // Run generate_conditions.py with n_conditions=3 to regenerate ASSIGNMENT_LIST.
-    const DATAPIPE_ID     = 'YOUR_ROUTING_DATAPIPE_ID';   // TODO: set before launch
+    const TURNSTILE_SITE_KEY = '0x4AAAAAADGmnnQVHoXcostC-8t_ez7uGss';
+    const VERIFY_WORKER_URL  = 'https://can-you-verify.sll-stanford.workers.dev';
+
+    // ---- routing constants (unchanged from before) ----
+    const DATAPIPE_ID     = 'H9cxh2VA14kV';
     const CONDITIONS      = ['joint', 'linear-aw', 'linear-wa'];
     const ASSIGNMENT_LIST = [2,0,1,0,2,1,0,1,2,0,1,2,0,2,1,1,0,2,0,2,1,2,0,1,1,2,0,2,1,0,1,2,0,2,0,1,0,1,2,1,0,2,1,2,0,0,2,1,2,0,1,1,2,0,2,1,0,0,2,1,2,0,1,0,1,2,1,2,0,0,1,2,1,0,2,0,2,1,2,1,0,0,2,1,1,0,2,1,0,2,0,1,2,2,0,1,0,2,1,2,0,1,2,1,0,0,2,1,1,2,0,1,0,2,2,1,0,0,1,2,1,2,0,2,0,1,0,2,1,1,0,2,2,1,0,1,2,0,0,2,1,0,1,2,2,0,1,1,2,0,0,1,2,1,0,2,2,1,0,0,2,1,1,0,2,2,0,1,1,2,0,2,1,0,1,0,2,0,1,2,1,0,2,1,2,0,0,1,2,2,1,0,1,2,0,1,0,2,2,1,0,2,1,0,0,2,1,1,0,2,0,1,2,2,0,1,1,2,0,0,1,2,2,0,1,1,0,2,0,2,1,1,2,0,0,1,2,2,1,0,1,0,2,0,2,1,2,1,0,1,2,0,0,2,1,1,0,2,2,1,0,0,2,1,2,0,1,1,2,0,2,0,1,0,1,2,1,2,0,2,0,1,1,0,2,0,2,1,1,2,0,0,1,2,2,0,1,1,2,0];
-    // ASSIGNMENT_LIST.length = 300 (100 joint, 100 linear-aw, 100 linear-wa)
-    // Update DataPipe n_conditions to match ASSIGNMENT_LIST.length
 
-    // condition → subfolder + extra query params
     function conditionToURL(condition, params) {
       if (condition === 'joint') {
         return `./joint/?${params.toString()}`;
@@ -31,61 +133,103 @@
         params.set('axis', 'WA');
         return `./linear/?${params.toString()}`;
       }
-      // fallback
       return `./joint/?${params.toString()}`;
     }
 
-    (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const pid    = params.get('PROLIFIC_PID') || 'no_pid';
+    async function doRouting() {
+      var msgEl = document.getElementById('loading-msg');
+      msgEl.textContent = 'Loading…';
 
-      // dev shortcut: ?type=joint|linear-aw|linear-wa bypasses DataPipe entirely
-      const devType = params.get('type');
+      var params  = new URLSearchParams(window.location.search);
+      var pid     = params.get('PROLIFIC_PID') || 'no_pid';
+
+      // dev shortcut
+      var devType = params.get('type');
       if (devType && CONDITIONS.includes(devType)) {
         params.delete('type');
-        console.log('Dev override — routing to:', devType);
         window.location.replace(conditionToURL(devType, params));
         return;
       }
 
-      // don't burn a slot on reload — reuse cached assignment
-      const condKey      = `condition_${DATAPIPE_ID}_${pid}`;
-      const idxKey       = `assignment_idx_${DATAPIPE_ID}_${pid}`;
-      let condition      = sessionStorage.getItem(condKey);
-      let assignment_idx = sessionStorage.getItem(idxKey);
+      var condKey      = `condition_${DATAPIPE_ID}_${pid}`;
+      var idxKey       = `assignment_idx_${DATAPIPE_ID}_${pid}`;
+      var condition    = sessionStorage.getItem(condKey);
+      var assignmentIdx = sessionStorage.getItem(idxKey);
 
       if (!condition) {
         try {
-          const res = await fetch('https://pipe.jspsych.org/api/condition/', {
+          var res = await fetch('https://pipe.jspsych.org/api/condition/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: '*/*' },
             body: JSON.stringify({ experimentID: DATAPIPE_ID })
           });
           if (!res.ok) throw new Error(`DataPipe returned ${res.status}`);
-          const data = await res.json();
-          const idx = data.condition;
+          var data = await res.json();
+          var idx  = data.condition;
           if (idx < ASSIGNMENT_LIST.length) {
-            condition      = CONDITIONS[ASSIGNMENT_LIST[idx]];
-            assignment_idx = String(idx);
+            condition     = CONDITIONS[ASSIGNMENT_LIST[idx]];
+            assignmentIdx = String(idx);
           } else {
-            condition      = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
-            assignment_idx = 'rand';
+            condition     = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
+            assignmentIdx = 'rand';
           }
           sessionStorage.setItem(condKey, condition);
-          sessionStorage.setItem(idxKey, assignment_idx);
+          sessionStorage.setItem(idxKey, assignmentIdx);
         } catch (err) {
-          console.warn('DataPipe condition routing failed, falling back to random:', err);
-          condition      = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
-          assignment_idx = 'rand';
+          console.warn('DataPipe routing failed, falling back to random:', err);
+          condition     = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
+          assignmentIdx = 'rand';
           sessionStorage.setItem(condKey, condition);
-          sessionStorage.setItem(idxKey, assignment_idx);
+          sessionStorage.setItem(idxKey, assignmentIdx);
         }
       }
 
-      console.log('Assigned condition:', condition, '| assignment_idx:', assignment_idx);
-      params.set('assignment_idx', assignment_idx);
+      params.set('assignment_idx', assignmentIdx);
       window.location.replace(conditionToURL(condition, params));
-    })();
+    }
+
+    // ---- turnstile ----
+    var captchaVerified = false;
+    var btn = document.getElementById('captcha-proceed');
+    var msg = document.getElementById('loading-msg');
+
+    var attempts = 0;
+    function tryRender() {
+      if (typeof turnstile !== 'undefined') {
+        turnstile.render('#turnstile-widget', {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: async function(token) {
+            // server-side verify (soft — routing proceeds regardless)
+            try {
+              var res = await fetch(VERIFY_WORKER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token }),
+              });
+              await res.json();  // result logged server-side; not blocking
+            } catch (_) {}
+            captchaVerified = true;
+            btn.style.display = 'inline-block';
+          },
+          'error-callback': function() {
+            msg.innerHTML = '<span style="color:#b22222;">Verification error — try reloading the page.</span>';
+          }
+        });
+      } else if (attempts < 50) {
+        attempts++;
+        setTimeout(tryRender, 100);
+      } else {
+        msg.innerHTML = '<span style="color:#b22222;">Security check failed to load.<br>Please disable ad blockers and reload.</span>';
+      }
+    }
+    tryRender();
+
+    btn.addEventListener('click', function() {
+      if (!captchaVerified) return;
+      btn.disabled    = true;
+      btn.textContent = 'Loading…';
+      doRouting();
+    });
   </script>
 </body>
 </html>

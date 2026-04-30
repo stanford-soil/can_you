@@ -2,35 +2,47 @@
 var W_TRIAL_SIZE = 460;   // trial grid size (px)
 var W_DEMO_SIZE  = 400;   // demo grid size (px)
 
-// snap to nearest integer (0..10) — always lands between figures
-function wSnapVal(frac) {
+var BC_PAL = {
+    AW:   '#1F5572',   // deep ocean    — able + willing
+    ANW:  '#5C8FA8',   // shallow water — able, not willing
+    NAW:  '#D69A57',   // dune          — not able, willing
+    NANW: '#A8A096',   // driftwood     — neither
+};
+
+var BC_LBLS = {
+    AW:   'able &amp; willing',
+    ANW:  'able, not willing',
+    NAW:  'willing, not able',
+    NANW: 'neither',
+};
+
+var NS = 'http://www.w3.org/2000/svg';
+
+function bcSnapVal(frac) {
     return Math.max(0, Math.min(10, Math.round(frac * 10)));
 }
 
-// quadrant key from figure position (col/row = 0..9) and snap position (floats 0..10)
-// a figure center is at col+0.5, row+0.5; it's in the "able" half if center < sx
-function wQuadKey(col, row, sx, sy, axisOrder) {
-    var figX = col + 0.5, figY = row + 0.5;
-    var isAble, isWilling;
+// semantic quadrant counts — always in AW/ANW/NAW/NANW terms
+// AW: sx=P(able), syL=P(willing|able), syR=P(willing|notAble)
+// WA: sx=P(willing), syL=P(able|willing), syR=P(able|notWilling)
+function bcCounts(sx, syL, syR, axisOrder) {
+    var n1 = Math.floor(sx), n2L = Math.floor(syL), n2R = Math.floor(syR);
     if (axisOrder === 'AW') {
-        isAble    = figX < sx;
-        isWilling = figY < sy;
+        return {
+            AW:   n1 * n2L,
+            ANW:  n1 * (10 - n2L),
+            NAW:  (10 - n1) * n2R,
+            NANW: (10 - n1) * (10 - n2R),
+        };
     } else {
-        isWilling = figX < sx;
-        isAble    = figY < sy;
-    }
-    return (isAble ? 'A' : 'NA') + (isWilling ? 'W' : 'NW');
-}
-
-// quadrant counts (sum = 100) from snap values
-// nAble = Math.floor(sx) since figure centers are at i+0.5 and i+0.5 < sx iff i < floor(sx)
-function wCounts(sx, sy, axisOrder) {
-    if (axisOrder === 'AW') {
-        var na = Math.floor(sx), nw = Math.floor(sy);
-        return { AW: na*nw, ANW: na*(10-nw), NAW: (10-na)*nw, NANW: (10-na)*(10-nw) };
-    } else {
-        var nw2 = Math.floor(sx), na2 = Math.floor(sy);
-        return { AW: nw2*na2, ANW: (10-nw2)*na2, NAW: nw2*(10-na2), NANW: (10-nw2)*(10-na2) };
+        // sx=willing cols, syL=able rows in willing half, syR=able rows in not-willing half
+        var nw = n1, aL = n2L, aR = n2R;
+        return {
+            AW:   nw * aL,
+            ANW:  (10 - nw) * aR,
+            NAW:  nw * (10 - aL),
+            NANW: (10 - nw) * (10 - aR),
+        };
     }
 }
 
@@ -39,401 +51,474 @@ function hexToRgba(hex, a) {
     return 'rgba('+r+','+g+','+b+','+a+')';
 }
 
+// axis-specific config (text labels, colors, figure-fill logic)
+function getBCConfig(axisOrder, pal) {
+    if (axisOrder === 'AW') {
+        return {
+            q1Html: 'How many of these 100 people would be <strong style="font-style:normal;color:'+pal.ANW+';">able</strong> to do this?',
+            q2Html: 'Of those who are able, how many would be <strong style="font-style:normal;color:'+pal.AW+';">willing</strong>?',
+            q3Html: 'Of those who are <em>not</em> able, how many would be <strong style="font-style:normal;color:'+pal.NAW+';">willing</strong>?',
+            stg1LeftColor:  pal.ANW,
+            stg1RightColor: pal.NANW,
+            stg1LeftLabel:  'able',
+            stg1RightLabel: 'not able',
+            knobRColor: pal.NAW,
+            getFill: function(col, row, sx, syL, syR, stage) {
+                var na = Math.floor(sx), wL = Math.floor(syL), wR = Math.floor(syR);
+                var able = col < na;
+                if (stage === 1) return able ? pal.ANW : pal.NANW;
+                if (stage === 2) return able ? (row < wL ? pal.AW : pal.ANW) : pal.NANW;
+                return pal[(able ? 'A' : 'NA') + ((able ? row < wL : row < wR) ? 'W' : 'NW')];
+            },
+            leftTopKey: 'AW', leftBotKey: 'ANW',
+            rightTopKey: 'NAW', rightBotKey: 'NANW',
+        };
+    } else {
+        return {
+            q1Html: 'How many of these 100 people would be <strong style="font-style:normal;color:'+pal.NAW+';">willing</strong> to do this?',
+            q2Html: 'Of those who are willing, how many would be <strong style="font-style:normal;color:'+pal.AW+';">able</strong>?',
+            q3Html: 'Of those who are <em>not</em> willing, how many would be <strong style="font-style:normal;color:'+pal.ANW+';">able</strong>?',
+            stg1LeftColor:  pal.NAW,
+            stg1RightColor: pal.NANW,
+            stg1LeftLabel:  'willing',
+            stg1RightLabel: 'not willing',
+            knobRColor: pal.ANW,
+            getFill: function(col, row, sx, syL, syR, stage) {
+                var nw = Math.floor(sx), aL = Math.floor(syL), aR = Math.floor(syR);
+                var willing = col < nw;
+                if (stage === 1) return willing ? pal.NAW : pal.NANW;
+                if (stage === 2) return willing ? (row < aL ? pal.AW : pal.NAW) : pal.NANW;
+                if (willing) return row < aL ? pal.AW : pal.NAW;
+                return row < aR ? pal.ANW : pal.NANW;
+            },
+            leftTopKey: 'AW', leftBotKey: 'NAW',
+            rightTopKey: 'ANW', rightBotKey: 'NANW',
+        };
+    }
+}
+
 
 // ============================================================
-// WaffleGrid — vanilla JS component
-// Returns a controller object.
+// BentCrosshairGrid — vanilla JS component
+// opts: { hidePanels, figuresRaining }
 // ============================================================
-function buildWaffleGridVanilla(parentEl, size, axisOrder, palette, opts) {
+function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
     opts = opts || {};
-    var snap        = opts.snap !== false;
-    var hapticOnSnap= opts.hapticOnSnap !== false;
-    var accent      = opts.accent || TOKENS.accent;
+    var pal = palette || BC_PAL;
+    var cfg = getBCConfig(axisOrder, pal);
+    var PANEL_W  = opts.panelWidth !== undefined ? opts.panelWidth : 240;
+    var CELL     = size / 10;
+    var FIG_W    = CELL * 0.56;
+    var FIG_H    = CELL * 0.66;
+    var V_ZONE   = 30;  // px within v-line for priority grab
 
-    var sx = 5, sy = 5;
-    var showCounts    = !!opts.showCounts;
-    var hidePills     = !!opts.hidePills;
-    var hideAxes      = !!opts.hideAxes;
-    var hideCrosshair = !!opts.hideCrosshair;
-    var inviteActive  = false;
-    var lastSnap      = { sx: 5, sy: 5 };
-    var dragging      = false;
-    var destroyed     = false;
-    var curPalette    = palette;
-    var highlightKey  = null; // for demo quadrant highlight overlay
-    var figGroups     = [];   // SVG <g> elements
+    var sx = 5, syL = 5, syR = 5;
+    var stage = 1;
+    var dragging = null;
+    var destroyed = false;
+    var hasInteractedL  = false;
+    var hasInteractedR  = false;
+    var rightNeeded     = true;   // false if sx===10 when v-line released
+    var leftNeeded      = true;   // false if sx===0  when v-line released
+    var isComplete      = false;
+    var firstInteractRT = null;
+    var stage2RT = null, stage3RT = null;
+    var trialStartT = performance.now();
 
-    // public interaction callback (set by demo grid)
-    var ctrl = { onInteract: null };
+    var ctrl = {};
 
-    // ---- build DOM ----
+    // ---- wrapper ----
     var wrapper = document.createElement('div');
-    wrapper.className = 'wg-wrapper';
-    wrapper.dataset.invitePulse = 'false';
+    wrapper.style.cssText = 'display:flex; flex-direction:column; align-items:center; user-select:none; -webkit-user-select:none;';
 
-    // top label row (includes left offset for y-axis column)
-    var topRow = document.createElement('div');
-    topRow.className = 'wg-top-labels';
-    topRow.style.marginLeft = '138px'; // 124px column + 14px gap
-    topRow.style.width = size + 'px';
+    // q1 above flex row
+    var q1El = document.createElement('div');
+    q1El.style.cssText = 'font-family:var(--serif); font-size:15px; color:var(--muted); font-style:italic; width:'+size+'px; text-align:center; margin-bottom:12px; line-height:1.5;';
+    q1El.innerHTML = cfg.q1Html;
+    wrapper.appendChild(q1El);
 
-    var xlblL = document.createElement('div');
-    xlblL.className = 'wg-xlbl';
-    var xlblR = document.createElement('div');
-    xlblR.className = 'wg-xlbl';
+    // flex row
+    var flexRow = document.createElement('div');
+    flexRow.style.cssText = 'display:flex; align-items:stretch; justify-content:center;';
 
-    topRow.appendChild(xlblL);
-    topRow.appendChild(xlblR);
-    wrapper.appendChild(topRow);
+    // left panel
+    var leftPanel = document.createElement('div');
+    leftPanel.style.cssText = 'width:'+PANEL_W+'px; flex-shrink:0; opacity:0; transition:opacity 500ms ease; padding-right:14px; box-sizing:border-box;'
+        + (opts.hidePanels ? 'display:none;' : '');
+    var leftInner = document.createElement('div');
+    leftInner.style.cssText = 'position:relative; height:'+size+'px;';
+    var q2El = document.createElement('div');
+    q2El.style.cssText = 'position:absolute; left:0; right:0; transform:translateY(-50%); font-family:var(--serif); font-size:13px; color:var(--muted); font-style:italic; text-align:right; line-height:1.5; top:50%;';
+    q2El.innerHTML = cfg.q2Html;
+    leftInner.appendChild(q2El);
+    leftPanel.appendChild(leftInner);
 
-    // mid row
-    var midRow = document.createElement('div');
-    midRow.className = 'wg-mid-row';
-
-    // y-axis column
-    var yCol = document.createElement('div');
-    yCol.className = 'wg-ylbl-col';
-    yCol.style.height = size + 'px';
-
-    var ylblT = document.createElement('div');
-    ylblT.className = 'wg-ylbl';
-    var ylblB = document.createElement('div');
-    ylblB.className = 'wg-ylbl';
-
-    yCol.appendChild(ylblT);
-    yCol.appendChild(ylblB);
-    midRow.appendChild(yCol);
+    // right panel
+    var rightPanel = document.createElement('div');
+    rightPanel.style.cssText = 'width:'+PANEL_W+'px; flex-shrink:0; opacity:0; transition:opacity 500ms ease; padding-left:14px; box-sizing:border-box;'
+        + (opts.hidePanels ? 'display:none;' : '');
+    var rightInner = document.createElement('div');
+    rightInner.style.cssText = 'position:relative; height:'+size+'px;';
+    var q3El = document.createElement('div');
+    q3El.style.cssText = 'position:absolute; left:0; right:0; transform:translateY(-50%); font-family:var(--serif); font-size:13px; color:var(--muted); font-style:italic; text-align:left; line-height:1.5; top:50%;';
+    q3El.innerHTML = cfg.q3Html;
+    rightInner.appendChild(q3El);
+    rightPanel.appendChild(rightInner);
 
     // figure area
-    var figArea = document.createElement('div');
-    figArea.className = 'wg-figure-area';
-    figArea.dataset.figureArea = 'true';
-    figArea.style.width  = size + 'px';
-    figArea.style.height = size + 'px';
+    var area = document.createElement('div');
+    area.className = 'fig-area';
+    area.style.width  = size + 'px';
+    area.style.height = size + 'px';
+    area.style.cursor = 'ew-resize';
 
     // crosshair lines
-    var hLine = document.createElement('div');
-    hLine.className = 'wg-h-line';
-    var vLine = document.createElement('div');
-    vLine.className = 'wg-v-line';
+    var vl = document.createElement('div'); vl.className = 'ch-v';
+    var hl = document.createElement('div'); hl.className = 'ch-hl';
+    var hr = document.createElement('div'); hr.className = 'ch-hr';
+    hl.style.opacity = '0'; hl.style.transition = 'opacity 500ms ease';
+    hr.style.opacity = '0'; hr.style.transition = 'opacity 500ms ease';
+    area.appendChild(vl); area.appendChild(hl); area.appendChild(hr);
 
-    // knob
-    var knob = document.createElement('div');
-    knob.className = 'wg-knob';
-    knob.dataset.crosshair = 'knob';
+    // knobs
+    var knobV = document.createElement('div'); knobV.className = 'ch-knob';
+    var knobL = document.createElement('div'); knobL.className = 'ch-knob';
+    knobL.style.borderColor = pal.AW;
+    knobL.style.opacity = '0'; knobL.style.transition = 'opacity 500ms ease';
+    var knobR = document.createElement('div'); knobR.className = 'ch-knob';
+    knobR.style.borderColor = cfg.knobRColor;
+    knobR.style.opacity = '0'; knobR.style.transition = 'opacity 500ms ease';
+    area.appendChild(knobV); area.appendChild(knobL); area.appendChild(knobR);
 
-    figArea.appendChild(hLine);
-    figArea.appendChild(vLine);
-    figArea.appendChild(knob);
-
-    // 100 person figures
-    var NS = 'http://www.w3.org/2000/svg';
-    var cellSize = size / 10;
-    var figW = cellSize * 0.55;
-    var figH = cellSize * 0.65;
-
+    // 100 figures
+    var figs = [];
     for (var i = 0; i < 100; i++) {
         var col = i % 10, row = Math.floor(i / 10);
         var cell = document.createElement('div');
-        cell.className = 'wg-figure-cell';
-        cell.style.left   = (col * cellSize) + 'px';
-        cell.style.top    = (row * cellSize) + 'px';
-        cell.style.width  = cellSize + 'px';
-        cell.style.height = cellSize + 'px';
-
-        // figure rain stagger (only plays if figuresRaining is set)
-        var rainDelay = (row * 10 + col) * 14;
-        cell.style.animation = 'figureRain 500ms cubic-bezier(.2,.8,.2,1) ' + rainDelay + 'ms both';
-
+        cell.className = 'fig-cell';
+        cell.style.left   = (col * CELL) + 'px';
+        cell.style.top    = (row * CELL) + 'px';
+        cell.style.width  = CELL + 'px';
+        cell.style.height = CELL + 'px';
+        if (opts.figuresRaining) {
+            var rainDelay = (row * 10 + col) * 14;
+            cell.style.animation = 'figureRain 500ms cubic-bezier(.2,.8,.2,1) ' + rainDelay + 'ms both';
+        }
         var svg = document.createElementNS(NS, 'svg');
         svg.setAttribute('viewBox', '0 0 12 14');
-        svg.setAttribute('width', figW);
-        svg.setAttribute('height', figH);
-
+        svg.setAttribute('width', FIG_W);
+        svg.setAttribute('height', FIG_H);
         var g = document.createElementNS(NS, 'g');
-        g.style.transition = 'fill 800ms cubic-bezier(.2,.8,.2,1)';
-
+        g.style.fill = pal.NANW;
+        g.style.transition = 'fill 180ms ease';
         var head = document.createElementNS(NS, 'circle');
         head.setAttribute('cx','6'); head.setAttribute('cy','3.8'); head.setAttribute('r','3');
         var body = document.createElementNS(NS, 'path');
         body.setAttribute('d','M0,14 Q0,8.5 3,7.5 Q4.2,8 6,8 Q7.8,8 9,7.5 Q12,8.5 12,14Z');
-
-        g.appendChild(head);
-        g.appendChild(body);
-        svg.appendChild(g);
-        cell.appendChild(svg);
-        figArea.appendChild(cell);
-        figGroups.push({ g: g, col: col, row: row });
+        g.appendChild(head); g.appendChild(body); svg.appendChild(g);
+        cell.appendChild(svg); area.appendChild(cell);
+        figs.push({ g: g, col: col, row: row });
     }
 
-    // count pills (4)
-    var pills = {};
-    var quadLabels = getQuadLabels(axisOrder);
-    ['AW','NAW','ANW','NANW'].forEach(function(key) {
-        var pill = document.createElement('div');
-        pill.className = 'wg-pill';
-        pill.dataset.quad = key;
-        figArea.appendChild(pill);
-        pills[key] = pill;
+    // marginal pills (stage 1)
+    var pLeft  = document.createElement('div'); pLeft.className  = 'pill'; area.appendChild(pLeft);
+    var pRight = document.createElement('div'); pRight.className = 'pill'; area.appendChild(pRight);
+
+    // quadrant pills (stages 2–3)
+    var qpills = {};
+    ['AW','ANW','NAW','NANW'].forEach(function(k) {
+        var p = document.createElement('div'); p.className = 'pill'; area.appendChild(p);
+        qpills[k] = p;
     });
 
-    // highlight overlay (used by demo)
-    var highlightOverlay = document.createElement('div');
-    highlightOverlay.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:8;';
-    figArea.appendChild(highlightOverlay);
-
-    midRow.appendChild(figArea);
-    wrapper.appendChild(midRow);
+    flexRow.appendChild(leftPanel);
+    flexRow.appendChild(area);
+    flexRow.appendChild(rightPanel);
+    wrapper.appendChild(flexRow);
     parentEl.appendChild(wrapper);
 
-    // set axis labels
-    var lbl = axisOrder === 'AW'
-        ? { xL:'Able', xR:'Not able', yT:'Willing', yB:'Not willing' }
-        : { xL:'Willing', xR:'Not willing', yT:'Able', yB:'Not able' };
-    xlblL.textContent = lbl.xL;
-    xlblR.textContent = lbl.xR;
-    ylblT.textContent = lbl.yT;
-    ylblB.textContent = lbl.yB;
-
-    // apply initial axis/crosshair visibility
-    topRow.style.opacity = hideAxes ? '0' : '1';
-    yCol.style.opacity   = hideAxes ? '0' : '1';
-    hLine.style.opacity  = hideCrosshair ? '0' : '1';
-    vLine.style.opacity  = hideCrosshair ? '0' : '1';
-    knob.style.opacity   = hideCrosshair ? '0' : '1';
-
     // ---- render ----
-    function render(skipFigureUpdate) {
-        var xPx = (sx / 10) * size;
-        var yPx = (sy / 10) * size;
+    function render() {
+        var xPx  = sx  / 10 * size;
+        var yLPx = syL / 10 * size;
+        var yRPx = syR / 10 * size;
+        var n1   = Math.floor(sx);
+        var counts = bcCounts(sx, syL, syR, axisOrder);
 
-        hLine.style.top  = (yPx - 0.5) + 'px';
-        vLine.style.left = (xPx - 0.5) + 'px';
-        knob.style.left  = xPx + 'px';
-        knob.style.top   = yPx + 'px';
+        // lines
+        vl.style.left  = xPx + 'px';
+        hl.style.width = xPx + 'px';
+        hl.style.top   = (yLPx - 0.5) + 'px';
+        hr.style.width = (size - xPx) + 'px';
+        hr.style.top   = (yRPx - 0.5) + 'px';
 
-        // tracking labels
-        xlblL.style.width  = xPx + 'px';
-        xlblR.style.width  = (size - xPx) + 'px';
-        ylblT.style.height = yPx + 'px';
-        ylblB.style.height = (size - yPx) + 'px';
+        // knobs
+        knobV.style.left = xPx + 'px';            knobV.style.top = (size / 2) + 'px';
+        knobL.style.left = (xPx / 2) + 'px';      knobL.style.top = yLPx + 'px';
+        knobR.style.left = ((xPx + size) / 2) + 'px'; knobR.style.top = yRPx + 'px';
 
-        var counts = wCounts(sx, sy, axisOrder);
-
-        // pills
-        ['AW','NAW','ANW','NANW'].forEach(function(key) {
-            var pill = pills[key];
-            var n = counts[key];
-            var c = curPalette[key];
-
-            // position pill over the figures of that semantic quadrant
-            // AW:  x=able(left),    y=willing(top)  → top-left always
-            // NANW: x=not-able(right), y=not-willing(bot) → bottom-right always
-            // NAW / ANW swap corners depending on which axis is x
-            //   AW order: x=able → NAW is top-right, ANW is bottom-left
-            //   WA order: x=willing → ANW is top-right, NAW is bottom-left
-            var pillX, pillY;
-            if (key === 'AW') {
-                pillX = xPx / 2;          pillY = yPx / 2;
-            } else if (key === 'NANW') {
-                pillX = (xPx + size) / 2; pillY = (yPx + size) / 2;
-            } else if (key === 'NAW') {
-                // not-able side × willing side
-                // AW: not-able=right, willing=top → top-right
-                // WA: not-able=bottom, willing=left → bottom-left
-                if (axisOrder === 'AW') {
-                    pillX = (xPx + size) / 2; pillY = yPx / 2;
-                } else {
-                    pillX = xPx / 2;          pillY = (yPx + size) / 2;
-                }
-            } else { // ANW
-                // able side × not-willing side
-                // AW: able=left, not-willing=bottom → bottom-left
-                // WA: able=top, not-willing=right → top-right
-                if (axisOrder === 'AW') {
-                    pillX = xPx / 2;          pillY = (yPx + size) / 2;
-                } else {
-                    pillX = (xPx + size) / 2; pillY = yPx / 2;
-                }
-            }
-            pill.style.left = pillX + 'px';
-            pill.style.top  = pillY + 'px';
-            pill.style.borderColor = hexToRgba(c, 0.35);
-
-            if (hidePills) {
-                pill.style.display = 'none';
-            } else if (showCounts && n > 0) {
-                pill.innerHTML = '<span class="wg-pill-n" style="color:' + c + ';">' + n + '</span>'
-                               + '<span class="wg-pill-lbl">' + quadLabels[key] + '</span>';
-                pill.style.display = '';
-            } else if (!showCounts) {
-                pill.innerHTML = '<span class="wg-pill-n placeholder">?</span>';
-                pill.style.display = '';
-            } else {
-                pill.style.display = 'none'; // n === 0 and showCounts
-            }
-        });
+        // floating q text tracks h-line positions
+        q2El.style.top = yLPx + 'px';
+        q3El.style.top = yRPx + 'px';
 
         // figure colors
-        if (!skipFigureUpdate) {
-            figGroups.forEach(function(fig) {
-                var qk = wQuadKey(fig.col, fig.row, sx, sy, axisOrder);
-                fig.g.style.fill = curPalette[qk];
-            });
-        }
-
-        // highlight overlay for demo
-        renderHighlight(xPx, yPx);
-    }
-
-    function renderHighlight(xPx, yPx) {
-        if (!highlightKey) {
-            highlightOverlay.innerHTML = '';
-            return;
-        }
-        var key = highlightKey;
-        var c = curPalette[key];
-        // rect for each quadrant depends on which axis is x
-        // AW: x=able(left), y=willing(top) → NAW=top-right, ANW=bottom-left
-        // WA: x=willing(left), y=able(top) → ANW=top-right, NAW=bottom-left
-        var rects = axisOrder === 'AW' ? {
-            AW:   { x:0,   y:0,   w:xPx,      h:yPx },
-            NAW:  { x:xPx, y:0,   w:size-xPx, h:yPx },
-            ANW:  { x:0,   y:yPx, w:xPx,      h:size-yPx },
-            NANW: { x:xPx, y:yPx, w:size-xPx, h:size-yPx },
-        } : {
-            AW:   { x:0,   y:0,   w:xPx,      h:yPx },
-            ANW:  { x:xPx, y:0,   w:size-xPx, h:yPx },
-            NAW:  { x:0,   y:yPx, w:xPx,      h:size-yPx },
-            NANW: { x:xPx, y:yPx, w:size-xPx, h:size-yPx },
-        };
-        // dim non-active quadrants
-        var dimHtml = '';
-        ['AW','NAW','ANW','NANW'].forEach(function(k) {
-            if (k === key) return;
-            var r = rects[k];
-            dimHtml += '<div style="position:absolute;left:'+r.x+'px;top:'+r.y+'px;width:'+r.w+'px;height:'+r.h+'px;background:rgba(251,250,247,0.78);pointer-events:none;"></div>';
+        figs.forEach(function(f) {
+            f.g.style.fill = cfg.getFill(f.col, f.row, sx, syL, syR, stage);
         });
-        // ring around active quad
-        var ar = rects[key];
-        dimHtml += '<div style="position:absolute;left:'+(ar.x-2)+'px;top:'+(ar.y-2)+'px;width:'+(ar.w+4)+'px;height:'+(ar.h+4)+'px;border:2px solid '+c+';border-radius:4px;pointer-events:none;"></div>';
-        highlightOverlay.innerHTML = dimHtml;
-    }
 
-    // ---- haptic snap pulse ----
-    function triggerSnapPulse() {
-        knob.style.animation = 'none';
-        knob.offsetWidth; // reflow
-        knob.style.animation = 'snapPulse 280ms ease-out';
-        // after snap pulse done, if invite was active re-apply it
-        if (inviteActive) {
-            setTimeout(function() {
-                if (inviteActive) wrapper.dataset.invitePulse = 'true';
-            }, 300);
+        // marginal pills — positions always update so they track v-line
+        pLeft.style.left  = (xPx / 2) + 'px';
+        pLeft.style.top   = (size / 2) + 'px';
+        pRight.style.left = ((xPx + size) / 2) + 'px';
+        pRight.style.top  = (size / 2) + 'px';
+        pLeft.style.display  = stage === 1 ? '' : 'none';
+        pRight.style.display = stage <= 2  ? '' : 'none';
+
+        if (stage === 1) {
+            pLeft.innerHTML  = '<span class="pill-n" style="color:'+cfg.stg1LeftColor+';">' +(n1*10)+'</span><span class="pill-lbl">'+cfg.stg1LeftLabel+'</span>';
+            pRight.innerHTML = '<span class="pill-n" style="color:'+cfg.stg1RightColor+';">'+(10-n1)*10+'</span><span class="pill-lbl">'+cfg.stg1RightLabel+'</span>';
+        }
+        if (stage === 2) {
+            pRight.innerHTML = '<span class="pill-n" style="color:'+cfg.stg1RightColor+';">'+(10-n1)*10+'</span><span class="pill-lbl">'+cfg.stg1RightLabel+'</span>';
+        }
+
+        // quadrant pills
+        var ltk = cfg.leftTopKey, lbk = cfg.leftBotKey;
+        var rtk = cfg.rightTopKey, rbk = cfg.rightBotKey;
+
+        qpills[ltk].style.display = stage >= 2 ? '' : 'none';
+        qpills[lbk].style.display = stage >= 2 ? '' : 'none';
+        qpills[rtk].style.display = stage >= 3 ? '' : 'none';
+        qpills[rbk].style.display = stage >= 3 ? '' : 'none';
+
+        if (stage >= 2) {
+            qpills[ltk].style.left = (xPx / 2) + 'px';
+            qpills[ltk].style.top  = (yLPx / 2) + 'px';
+            qpills[ltk].innerHTML  = '<span class="pill-n" style="color:'+pal[ltk]+';">'+counts[ltk]+'</span><span class="pill-lbl">'+BC_LBLS[ltk]+'</span>';
+            qpills[lbk].style.left = (xPx / 2) + 'px';
+            qpills[lbk].style.top  = ((yLPx + size) / 2) + 'px';
+            qpills[lbk].innerHTML  = '<span class="pill-n" style="color:'+pal[lbk]+';">'+counts[lbk]+'</span><span class="pill-lbl">'+BC_LBLS[lbk]+'</span>';
+        }
+        if (stage >= 3) {
+            qpills[rtk].style.left = ((xPx + size) / 2) + 'px';
+            qpills[rtk].style.top  = (yRPx / 2) + 'px';
+            qpills[rtk].innerHTML  = '<span class="pill-n" style="color:'+pal[rtk]+';">'+counts[rtk]+'</span><span class="pill-lbl">'+BC_LBLS[rtk]+'</span>';
+            qpills[rbk].style.left = ((xPx + size) / 2) + 'px';
+            qpills[rbk].style.top  = ((yRPx + size) / 2) + 'px';
+            qpills[rbk].innerHTML  = '<span class="pill-n" style="color:'+pal[rbk]+';">'+counts[rbk]+'</span><span class="pill-lbl">'+BC_LBLS[rbk]+'</span>';
+
         }
     }
 
-    // ---- drag interaction ----
-    function handleMove(clientX, clientY) {
-        var rect = figArea.getBoundingClientRect();
-        var cx = clientX - rect.left;
-        var cy = clientY - rect.top;
-        var newSx = snap ? wSnapVal(cx / size) : Math.max(0, Math.min(10, (cx / size) * 10));
-        var newSy = snap ? wSnapVal(cy / size) : Math.max(0, Math.min(10, (cy / size) * 10));
-
-        if (snap && hapticOnSnap && (newSx !== lastSnap.sx || newSy !== lastSnap.sy)) {
-            triggerSnapPulse();
-            lastSnap.sx = newSx;
-            lastSnap.sy = newSy;
+    // ---- stage advance ----
+    function advanceStage() {
+        if (stage === 1) {
+            stage = 2;
+            hl.style.opacity = '1'; knobL.style.opacity = '1';
+            leftPanel.style.opacity = '1';
+            area.style.cursor = 'crosshair';
+            if (stage2RT === null) stage2RT = Math.round(performance.now() - trialStartT);
+        } else if (stage === 2) {
+            stage = 3;
+            hr.style.opacity = '1'; knobR.style.opacity = '1';
+            rightPanel.style.opacity = '1';
+            if (stage3RT === null) stage3RT = Math.round(performance.now() - trialStartT);
         }
-        sx = newSx; sy = newSy;
+        updateIsComplete();
         render();
-        if (ctrl.onChange) ctrl.onChange({ sx: sx, sy: sy, counts: wCounts(sx, sy, axisOrder) });
+        if (ctrl.onStageAdvance) ctrl.onStageAdvance(stage);
     }
+
+    function updateIsComplete() {
+        if (stage < 3) { isComplete = false; return; }
+        // sx===10: no right group, so only need L interaction
+        // sx===0 or normal: need R interaction
+        isComplete = !rightNeeded ? hasInteractedL : hasInteractedR;
+    }
+
+    // ---- drag ----
+    function mv(cx, cy, r) {
+        if (!r) r = area.getBoundingClientRect();
+        var lx = (cx - r.left) / size;
+        var ly = (cy - r.top)  / size;
+        if (dragging === 'v')      sx  = bcSnapVal(lx);
+        else if (dragging === 'L') { syL = bcSnapVal(ly); hasInteractedL = true; }
+        else if (dragging === 'R') { syR = bcSnapVal(ly); hasInteractedR = true; }
+        updateIsComplete();
+        render();
+        if (ctrl.onChange) ctrl.onChange({ sx:sx, syL:syL, syR:syR, stage:stage, hasInteractedR:hasInteractedR, isComplete:isComplete });
+    }
+
+    function pickDragTarget(clientX, r) {
+        var lx = clientX - r.left;
+        var xPx = sx / 10 * size;
+        if (stage === 1)      return 'v';
+        if (stage === 2)      return Math.abs(lx - xPx) < V_ZONE ? 'v' : 'L';
+        return Math.abs(lx - xPx) < V_ZONE ? 'v' : (lx < xPx ? 'L' : 'R');
+    }
+
+    // ---- smooth animation ----
+    var _animCancel = null;
 
     function onDown(e) {
         if (destroyed) return;
-        dragging = true;
+        if (_animCancel) { _animCancel(); }   // cancel any running animation
+        var r = area.getBoundingClientRect();
+        var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        dragging = pickDragTarget(clientX, r);
+        area.style.cursor = dragging === 'v' ? 'ew-resize' : 'ns-resize';
+        if (firstInteractRT === null) firstInteractRT = Math.round(performance.now() - trialStartT);
         if (ctrl.onInteract) ctrl.onInteract();
-        handleMove(e.clientX, e.clientY);
+        mv(clientX, clientY, r);
         e.preventDefault();
     }
     function onMove(e) {
         if (!dragging || destroyed) return;
-        handleMove(e.clientX, e.clientY);
+        mv(e.clientX, e.clientY);
     }
     function onTouchMove(e) {
         if (!dragging || destroyed) return;
-        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        mv(e.touches[0].clientX, e.touches[0].clientY);
         e.preventDefault();
     }
-    function onUp() { dragging = false; }
+    function onUp() {
+        if (!dragging) return;
+        var prev = dragging;
+        dragging = null;
+        if (stage === 1 && prev === 'v') {
+            if (sx === 0) {
+                // all on right — skip left line, show right line directly
+                leftNeeded = false;
+                stage = 3;
+                if (stage2RT === null) stage2RT = Math.round(performance.now() - trialStartT);
+                if (stage3RT === null) stage3RT = Math.round(performance.now() - trialStartT);
+                hr.style.opacity = '1'; knobR.style.opacity = '1';
+                rightPanel.style.opacity = '1';
+                area.style.cursor = 'ns-resize';
+                updateIsComplete();
+                render();
+                if (ctrl.onStageAdvance) ctrl.onStageAdvance(3);
+            } else if (sx === 10) {
+                // all on left — left line only, no right line needed
+                rightNeeded = false;
+                advanceStage(); // → stage 2
+            } else {
+                advanceStage(); // normal → stage 2
+            }
+        } else if (stage === 2 && prev === 'L') {
+            if (!rightNeeded) {
+                // sx was 10 — finalize without showing right line
+                stage = 3;
+                if (stage3RT === null) stage3RT = Math.round(performance.now() - trialStartT);
+                updateIsComplete();
+                render();
+                if (ctrl.onStageAdvance) ctrl.onStageAdvance(3);
+            } else {
+                advanceStage(); // normal → stage 3
+            }
+        }
+        if (stage === 1) area.style.cursor = 'ew-resize';
+    }
+    function onAreaMove(e) {
+        if (dragging || destroyed || stage < 2) return;
+        var r = area.getBoundingClientRect();
+        var xPx = sx / 10 * size;
+        area.style.cursor = Math.abs(e.clientX - r.left - xPx) < V_ZONE ? 'ew-resize' : 'ns-resize';
+    }
 
-    figArea.addEventListener('mousedown',  onDown);
-    figArea.addEventListener('touchstart', onDown, { passive: false });
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
-    document.addEventListener('mouseup',   onUp);
-    document.addEventListener('touchend',  onUp);
+    area.addEventListener('mousedown',  onDown);
+    area.addEventListener('touchstart', onDown, { passive: false });
+    area.addEventListener('mousemove',  onAreaMove);
+    document.addEventListener('mousemove',  onMove);
+    document.addEventListener('touchmove',  onTouchMove, { passive: false });
+    document.addEventListener('mouseup',    onUp);
+    document.addEventListener('touchend',   onUp);
 
-    // initial render
     render();
 
     // ---- controller ----
-    ctrl.setPos = function(newSx, newSy) {
-        sx = newSx; sy = newSy;
-        render();
-        if (ctrl.onChange) ctrl.onChange({ sx: sx, sy: sy, counts: wCounts(sx, sy, axisOrder) });
-    };
-    ctrl.setHideAxes = function(hide) {
-        hideAxes = hide;
-        topRow.style.opacity = hide ? '0' : '1';
-        yCol.style.opacity   = hide ? '0' : '1';
-    };
-    ctrl.setHideCrosshair = function(hide) {
-        hideCrosshair = hide;
-        hLine.style.opacity = hide ? '0' : '1';
-        vLine.style.opacity = hide ? '0' : '1';
-        knob.style.opacity  = hide ? '0' : '1';
-    };
-    ctrl.setShowCounts = function(show) {
-        showCounts = show;
-        render(true);
-    };
-    ctrl.setHidePills = function(hide) {
-        hidePills = hide;
-        render(true);
-    };
-    ctrl.setPalette = function(p) {
-        curPalette = p;
+    ctrl.setPos = function(newSx, newSyL, newSyR) {
+        if (newSx  !== undefined) sx  = newSx;
+        if (newSyL !== undefined) syL = newSyL;
+        if (newSyR !== undefined) syR = newSyR;
         render();
     };
-    ctrl.setHighlight = function(key) {
-        highlightKey = key;
-        var xPx = (sx / 10) * size;
-        var yPx = (sy / 10) * size;
-        renderHighlight(xPx, yPx);
+    ctrl.animateTo = function(targetSx, targetSyL, targetSyR, durationMs, onDone) {
+        if (_animCancel) { _animCancel(); }
+        var cancelled = false;
+        _animCancel = function() { cancelled = true; _animCancel = null; };
+        var startSx = sx, startSyL = syL, startSyR = syR, startT = null;
+        function frame(now) {
+            if (cancelled || destroyed) return;
+            if (startT === null) startT = now;
+            var t = Math.min(1, (now - startT) / durationMs);
+            // ease-in-out cubic
+            var e = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+            sx  = startSx  + (targetSx  - startSx)  * e;
+            syL = startSyL + (targetSyL - startSyL) * e;
+            syR = startSyR + (targetSyR - startSyR) * e;
+            render();
+            if (t < 1) {
+                requestAnimationFrame(frame);
+            } else {
+                sx = targetSx; syL = targetSyL; syR = targetSyR;
+                render();
+                _animCancel = null;
+                if (onDone) onDone();
+            }
+        }
+        requestAnimationFrame(frame);
+    };
+    ctrl.cancelAnimations = function() {
+        if (_animCancel) { _animCancel(); }
+    };
+    ctrl.advanceToStage = function(n) {
+        while (stage < n) advanceStage();
+    };
+    ctrl.getStage = function() { return stage; };
+    ctrl.setPointerEvents = function(enabled) {
+        area.style.pointerEvents = enabled ? '' : 'none';
     };
     ctrl.setInviteActive = function(active) {
-        inviteActive = active;
-        wrapper.dataset.invitePulse = active ? 'true' : 'false';
-        if (active) {
-            knob.style.animation = ''; // clear snapPulse so invitePulse takes over
-            figArea.style.pointerEvents = '';  // unlock when it's their turn
-        }
+        if (active) knobV.classList.add('ch-knob--invite');
+        else        knobV.classList.remove('ch-knob--invite');
     };
-    ctrl.setPointerEvents = function(enabled) {
-        figArea.style.pointerEvents = enabled ? '' : 'none';
+    ctrl.showLeftPanel = function() {
+        leftPanel.style.opacity = '1';
+        q2El.style.transition = 'color 300ms ease';
+        q2El.style.color = '#1F5572';
+        setTimeout(function() {
+            q2El.style.transition = 'color 900ms ease';
+            q2El.style.color = '#6E665C';
+        }, 1600);
     };
-    ctrl.getFigureAreaEl = function() { return figArea; };
+    ctrl.showRightPanel = function() {
+        rightPanel.style.opacity = '1';
+        q3El.style.transition = 'color 300ms ease';
+        q3El.style.color = '#1F5572';
+        setTimeout(function() {
+            q3El.style.transition = 'color 900ms ease';
+            q3El.style.color = '#6E665C';
+        }, 1600);
+    };
+    ctrl.getState = function() {
+        return { sx:sx, syL:syL, syR:syR, stage:stage, hasInteractedR:hasInteractedR, isComplete:isComplete, rightNeeded:rightNeeded, leftNeeded:leftNeeded };
+    };
+    ctrl.getCounts = function() { return bcCounts(sx, syL, syR, axisOrder); };
+    ctrl.getTimings = function() {
+        return { firstInteractRT:firstInteractRT, stage2RT:stage2RT, stage3RT:stage3RT };
+    };
+    ctrl.getWrapperEl = function() { return wrapper; };
     ctrl.destroy = function() {
         destroyed = true;
-        figArea.removeEventListener('mousedown', onDown);
-        figArea.removeEventListener('touchstart', onDown);
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('touchmove', onTouchMove);
-        document.removeEventListener('mouseup', onUp);
-        document.removeEventListener('touchend', onUp);
+        area.removeEventListener('mousedown',  onDown);
+        area.removeEventListener('touchstart', onDown);
+        area.removeEventListener('mousemove',  onAreaMove);
+        document.removeEventListener('mousemove',  onMove);
+        document.removeEventListener('touchmove',  onTouchMove);
+        document.removeEventListener('mouseup',    onUp);
+        document.removeEventListener('touchend',   onUp);
         if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
     };
 
@@ -444,37 +529,46 @@ function buildWaffleGridVanilla(parentEl, size, axisOrder, palette, opts) {
 // ============================================================
 // Trial builder
 // ============================================================
-function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
-    var palette = colorMap || PALETTES[PALETTE_NAME];
+var PRACTICE_STIMULUS = {
+    itemID:       'practice',
+    actionPhrase: 'pass the salt',
+    vignette:     'You\'re sitting at the dinner table with your family. Your mom looks over at you and asks:',
+};
 
-    // pacing tier-down
-    var isFirstFew       = trialIndex <= 2;
-    var vignetteGateMs   = isFirstFew ? 3000 : 1800;
-    var gridRevealDelay  = isFirstFew ? 3000 : 1200;
-    var gridGateMs       = isFirstFew ? 1500 : 600;
-    var totalTrials      = N_TRIALS_PER_PARTICIPANT;
+function buildBentCrosshairTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
+    var palette    = colorMap || BC_PAL;
+    var isPractice = trialIndex === 0;
+    var totalTrials = N_TRIALS_PER_PARTICIPANT;
+    var pct = isPractice ? 0 : Math.round(((trialIndex - 1) / totalTrials) * 100);
 
-    var pct = Math.round(((trialIndex - 1) / totalTrials) * 100);
+    // pacing
+    var isFirstFew      = !isPractice && trialIndex <= 2;
+    var vignetteGateMs  = isPractice ? 2000 : (isFirstFew ? 3000 : 1800);
+    var gridRevealDelay = isPractice ? 2000 : (isFirstFew ? 3000 : 1200);
+    var gridGateMs      = isPractice ? 1000 : (isFirstFew ? 2000 : 800);
+
+    var progressHTML = isPractice
+        ? '<div class="w-practice-badge">Practice Trial</div>'
+        : `<div class="w-progress-strip">
+            <div class="w-progress-row">
+                <span class="w-progress-label">Scenario ${trialIndex} of ${totalTrials}</span>
+                <span class="w-progress-pct">${pct}%</span>
+            </div>
+            <div class="w-progress-track">
+                <div class="w-progress-fill" id="w-prog-fill" style="width:${pct}%;"></div>
+            </div>
+           </div>`;
 
     var html = `
         <div class="w-scene">
-            ${getSectionTickerHTML('study')}
-            <div class="w-progress-strip">
-                <div class="w-progress-row">
-                    <span class="w-progress-label">Scenario ${trialIndex} of ${totalTrials}</span>
-                    <span class="w-progress-pct">${pct}%</span>
-                </div>
-                <div class="w-progress-track">
-                    <div class="w-progress-fill" id="w-prog-fill" style="width:${pct}%;"></div>
-                </div>
-            </div>
+            ${getSectionTickerHTML(isPractice ? 'instructions' : 'study')}
+            ${progressHTML}
             <div class="w-card" id="w-trial-card">
                 <div id="w-stimulus-section" style="${isFirstFew ? 'padding-top:80px;' : ''} transition:${isFirstFew ? 'padding-top 700ms cubic-bezier(.22,.8,.28,1)' : 'none'};">
                     <p class="w-vignette">${stimulus.vignette}</p>
                     <p class="w-question">"Can you ${stimulus.actionPhrase}?"</p>
                 </div>
                 <div id="w-grid-section" style="opacity:0; transform:translateY(20px); transition:opacity 500ms ease, transform 500ms cubic-bezier(.2,.8,.2,1); pointer-events:none;">
-                    <p class="w-grid-instr">Drag the crosshair to split 100 people into the four groups</p>
                     <div class="w-grid-reveal-wrapper">
                         <div class="w-grid-center" id="w-grid-center">
                             <div id="w-grid-container" style="pointer-events:auto;"></div>
@@ -482,11 +576,11 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
                     </div>
                     <div class="w-grid-actions">
                         <div class="w-grid-spacer">
-                            ${trialIndex > 1 ? '<button id="w-prev-btn" class="w-btn-ghost">← Previous</button>' : ''}
+                            ${(!isPractice && trialIndex > 1) ? '<button id="w-prev-btn" class="w-btn-ghost">← Previous</button>' : ''}
                         </div>
                         <div style="display:flex; flex-direction:column; align-items:center;">
-                            <button id="w-submit-btn" class="w-btn-primary" disabled>Submit</button>
-                            <div class="w-btn-hint" id="w-submit-hint">Drag the crosshair to continue</div>
+                            <button id="w-submit-btn" class="w-btn-primary" disabled>${isPractice ? 'Continue →' : 'Submit'}</button>
+                            <div class="w-btn-hint" id="w-submit-hint">Drag the vertical line to start</div>
                         </div>
                         <div class="w-grid-spacer"></div>
                     </div>
@@ -501,12 +595,10 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
         choices: [],
         response_ends_trial: false,
         on_load: function() {
-            var trialStart         = performance.now();
-            var hasInteracted      = false;
-            var vignetteGate       = false;
-            var gridGate           = false;
-            var submitting         = false;
-            var firstInteractionRT = null;
+            var trialStart        = performance.now();
+            var vignetteGate      = false;
+            var gridGate          = false;
+            var submitting        = false;
 
             var stimSection  = document.getElementById('w-stimulus-section');
             var gridSection  = document.getElementById('w-grid-section');
@@ -516,38 +608,41 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
             var hintEl       = document.getElementById('w-submit-hint');
             var prevBtn      = document.getElementById('w-prev-btn');
 
-            // build waffle grid
-            var grid = buildWaffleGridVanilla(gridCont, W_TRIAL_SIZE, axisOrder, palette, {
-                snap: true,
-                hapticOnSnap: true,
+            // build bent crosshair grid
+            var grid = buildBentCrosshairGrid(gridCont, W_TRIAL_SIZE, axisOrder, palette, {
+                panelWidth: 240,
             });
 
-            var lastResponse = { sx: 5, sy: 5 };
             grid.onChange = function(state) {
-                lastResponse = state;
-                if (!hasInteracted) {
-                    hasInteracted = true;
-                    firstInteractionRT = Math.round(performance.now() - trialStart);
-                    grid.setShowCounts(true);
-                }
-                updateSubmitState();
+                updateHint(state.stage);
+                updateSubmitState(state);
             };
 
-            function updateSubmitState() {
-                var canSubmit = hasInteracted && vignetteGate && gridGate && !submitting;
+            function updateHint(stg) {
+                if (submitting) { hintEl.style.display = 'none'; return; }
+                var state = grid.getState();
+                if (state.isComplete) { hintEl.style.display = 'none'; return; }
+                if (stg === 1)                          hintEl.textContent = 'Drag the vertical line to start';
+                else if (stg === 2)                     hintEl.textContent = 'Now adjust the left line';
+                else if (stg === 3 && !state.rightNeeded) hintEl.textContent = 'Adjust the left line to set your answer';
+                else if (stg === 3)                     hintEl.textContent = 'Now adjust the right line';
+                hintEl.style.display = '';
+            }
+
+            function updateSubmitState(state) {
+                state = state || grid.getState();
+                var allDone = state.isComplete;
+                var canSubmit = allDone && vignetteGate && gridGate && !submitting;
                 submitBtn.disabled = !canSubmit;
-                if (submitting) {
-                    hintEl.style.display = 'none';
-                } else if (!hasInteracted) {
-                    hintEl.textContent = 'Drag the crosshair to continue';
-                    hintEl.style.display = '';
-                } else if (!gridGate) {
-                    hintEl.textContent = 'Take a moment to look it over';
-                    hintEl.style.display = '';
-                } else {
+                if (submitting || (allDone && vignetteGate && gridGate)) {
                     hintEl.style.display = 'none';
                 }
             }
+
+            grid.onStageAdvance = function(stage) {
+                updateHint(stage);
+                updateSubmitState();
+            };
 
             // vignette gate
             setTimeout(function() {
@@ -557,15 +652,10 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
 
             // grid reveal
             setTimeout(function() {
-                // slide vignette up (first-few only)
-                if (isFirstFew) {
-                    stimSection.style.paddingTop = '0px';
-                }
-                // fade grid in
+                if (isFirstFew) stimSection.style.paddingTop = '0px';
                 gridSection.style.opacity       = '1';
                 gridSection.style.transform     = 'translateY(0)';
                 gridSection.style.pointerEvents = 'auto';
-                // clip-path reveal on the center wrapper
                 gridCenter.style.animation = 'gridReveal 600ms cubic-bezier(.2,.8,.2,1) both';
             }, gridRevealDelay);
 
@@ -575,9 +665,9 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
                 updateSubmitState();
             }, gridRevealDelay + gridGateMs);
 
-            // keyboard nav
             function onKey(e) {
-                if (e.key === 'Enter' && hasInteracted && vignetteGate && gridGate && !submitting) {
+                var state = grid.getState();
+                if (e.key === 'Enter' && state.isComplete && vignetteGate && gridGate && !submitting) {
                     doSubmit();
                 }
             }
@@ -588,38 +678,50 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
                 submitting = true;
                 var totalRT = Math.round(performance.now() - trialStart);
 
-                // confirmed state
                 submitBtn.classList.add('confirmed');
-                submitBtn.innerHTML = '<span style="font-size:16px;">✓</span> Recorded';
+                submitBtn.innerHTML = '<span style="font-size:16px;">✓</span> ' + (isPractice ? 'Done' : 'Recorded');
                 submitBtn.disabled = true;
                 hintEl.style.display = 'none';
                 grid.setPointerEvents(false);
 
-                var counts = wCounts(lastResponse.sx, lastResponse.sy, axisOrder);
+                var state   = grid.getState();
+                var counts  = grid.getCounts();
+                var timings = grid.getTimings();
+
                 var trialData = {
-                    itemID:              stimulus.itemID,
-                    actionPhrase:        stimulus.actionPhrase,
-                    vignette:            stimulus.vignette,
-                    axisOrder:           axisOrder,
-                    colorAssignment:     JSON.stringify(colorMap || {}),
-                    snapX:               lastResponse.sx,
-                    snapY:               lastResponse.sy,
-                    nAW:                 counts.AW,
-                    nANW:                counts.ANW,
-                    nNAW:                counts.NAW,
-                    nNANW:               counts.NANW,
-                    abilityResponse:     counts.AW + counts.ANW,
-                    willingnessResponse: counts.AW + counts.NAW,
-                    firstInteractionRT:  firstInteractionRT,
-                    trialRT:             totalRT,
-                    trialIndex:          trialIndex,
-                    suspicious:          totalRT < 1500
+                    itemID:                      stimulus.itemID,
+                    actionPhrase:                stimulus.actionPhrase,
+                    vignette:                    stimulus.vignette,
+                    axisOrder:                   axisOrder,
+                    isPractice:                  isPractice ? 1 : 0,
+                    trialIndex:                  trialIndex,
+                    // 3-DOF raw values
+                    sx:                          state.sx,
+                    syL:                         state.syL,
+                    syR:                         state.syR,
+                    // semantic quadrant counts
+                    able_willing_count:          counts.AW,
+                    able_not_willing_count:      counts.ANW,
+                    not_able_willing_count:      counts.NAW,
+                    not_able_not_willing_count:  counts.NANW,
+                    total:                       100,
+                    // derived
+                    abilityResponse:             counts.AW + counts.ANW,
+                    willingnessResponse:         counts.AW + counts.NAW,
+                    // timing
+                    firstInteractionRT:          timings.firstInteractRT,
+                    stage2RT:                    timings.stage2RT,
+                    stage3RT:                    timings.stage3RT,
+                    trialRT:                     totalRT,
+                    suspicious:                  totalRT < 2000,
                 };
+
                 jsPsych.data.dataProperties.trialResponses.push(trialData);
-                logToBrowser('waffle trial', trialData);
+                logToBrowser('bent crosshair trial', trialData);
 
                 setTimeout(function() {
                     document.removeEventListener('keydown', onKey);
+                    grid.destroy();
                     jsPsych.finishTrial();
                 }, 700);
             }
@@ -628,15 +730,15 @@ function buildWaffleTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
             if (prevBtn) {
                 prevBtn.addEventListener('click', function() {
                     document.removeEventListener('keydown', onKey);
-                    // remove last saved trial response (going back)
                     var responses = jsPsych.data.dataProperties.trialResponses;
                     if (responses.length > 0) responses.pop();
                     jsPsych.data.dataProperties._goBack = true;
+                    grid.destroy();
                     jsPsych.finishTrial();
                 });
             }
 
-            updateSubmitState();
+            updateHint(1);
         }
     };
 }

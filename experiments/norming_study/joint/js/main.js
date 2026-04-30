@@ -141,7 +141,7 @@ function initStudyWaffle(stimuli) {
         }
     };
 
-    // ---- instructions ----
+    // ---- instructions (2 pages: intro + demo) ----
     var instrPage = 0;
     var _instrNavHandler = null;
 
@@ -158,7 +158,7 @@ function initStudyWaffle(stimuli) {
             _instrNavHandler = function(e) {
                 var id = e.target && e.target.id;
                 if (id === 'jspsych-instructions-next') {
-                    instrPage = Math.min(2, instrPage + 1);
+                    instrPage = Math.min(1, instrPage + 1);
                     setTimeout(function() { setupInstrPage(instrPage, axisOrder, colorMap); }, 50);
                 } else if (id === 'jspsych-instructions-back') {
                     instrPage = Math.max(0, instrPage - 1);
@@ -177,6 +177,101 @@ function initStudyWaffle(stimuli) {
         }
     };
 
+    // ---- practice intro ----
+    var practiceIntro = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+            <div class="w-scene w-scene--centered">
+                ${getSectionTickerHTML('instructions')}
+                <div class="w-card">
+                    <div class="w-instr-overline">Practice</div>
+                    <h2 class="w-instr-title">Try it out</h2>
+                    <div class="w-instr-rule"></div>
+                    <div class="w-instr-body">
+                        <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both;">You'll now get to try out a practice scenario.</p>
+                    </div>
+                    <hr class="w-hr">
+                    <div class="w-instr-footer" id="w-practice-intro-footer"></div>
+                </div>
+            </div>`,
+        choices: [],
+        response_ends_trial: false,
+        on_load: function() {
+            setTimeout(function() {
+                var footer = document.getElementById('w-practice-intro-footer');
+                if (!footer) return;
+                var col = document.createElement('div');
+                col.style.cssText = 'display:flex; flex-direction:column; align-items:center; margin-left:auto;';
+                var btn = document.createElement('button');
+                btn.className   = 'w-btn-primary';
+                btn.textContent = 'Go to practice';
+                btn.disabled    = true;
+                var hint = document.createElement('div');
+                hint.className   = 'w-btn-hint';
+                hint.textContent = 'Take a moment to read';
+                col.appendChild(btn);
+                col.appendChild(hint);
+                footer.appendChild(col);
+                setTimeout(function() {
+                    btn.disabled       = false;
+                    hint.style.display = 'none';
+                }, 2500);
+                btn.addEventListener('click', function() { jsPsych.finishTrial(); });
+            }, 30);
+        }
+    };
+
+    // ---- practice trial ----
+    var practiceTrial = buildBentCrosshairTrial(PRACTICE_STIMULUS, axisOrder, colorMap, 0, jsPsych);
+
+    // ---- ready to start ----
+    var xDimReady = axisOrder === 'AW' ? 'able' : 'willing';
+    var yDimReady = axisOrder === 'AW' ? 'willing' : 'able';
+    var readyToStart = {
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `
+            <div class="w-scene w-scene--centered">
+                ${getSectionTickerHTML('instructions')}
+                <div class="w-card">
+                    <div class="w-ready-overline">Ready to start</div>
+                    <h2 class="w-instr-title">You're all set!</h2>
+                    <div class="w-instr-rule"></div>
+                    <div class="w-instr-body">
+                        <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both;">There are no right or wrong answers — we're just interested in what you think.</p>
+                        <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 650ms both;">Remember: being <em>${xDimReady}</em> and being <em>${yDimReady}</em> don't always go together.</p>
+                        <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 1000ms both;">You will be asked for your thoughts on: <b>30 scenarios</b>.</p>
+                    </div>
+                    <hr class="w-hr">
+                    <div class="w-instr-footer" id="w-ready-footer"></div>
+                </div>
+            </div>`,
+        choices: [],
+        response_ends_trial: false,
+        on_load: function() {
+            setTimeout(function() {
+                var footer = document.getElementById('w-ready-footer');
+                if (!footer) return;
+                var col = document.createElement('div');
+                col.style.cssText = 'display:flex; flex-direction:column; align-items:center; margin-left:auto;';
+                var btn = document.createElement('button');
+                btn.className   = 'w-btn-primary';
+                btn.textContent = 'Start the study';
+                btn.disabled    = true;
+                var hint = document.createElement('div');
+                hint.className   = 'w-btn-hint';
+                hint.textContent = 'Take a moment to read';
+                col.appendChild(btn);
+                col.appendChild(hint);
+                footer.appendChild(col);
+                setTimeout(function() {
+                    btn.disabled        = false;
+                    hint.style.display  = 'none';
+                }, 3000);
+                btn.addEventListener('click', function() { jsPsych.finishTrial(); });
+            }, 30);
+        }
+    };
+
     // ---- trial block (with mid-save) ----
     var mainTrialCount = 0;
     var midpoint = Math.floor(N_TRIALS_PER_PARTICIPANT / 2);
@@ -186,7 +281,7 @@ function initStudyWaffle(stimuli) {
         mainTrialCount++;
         var mc = mainTrialCount; // capture
 
-        trialBlock.push(buildWaffleTrial(stimulus, axisOrder, colorMap, mc, jsPsych));
+        trialBlock.push(buildBentCrosshairTrial(stimulus, axisOrder, colorMap, mc, jsPsych));
 
         // after submit, check for back navigation flag
         trialBlock[trialBlock.length - 1].on_finish = function(data) {
@@ -391,20 +486,25 @@ function initStudyWaffle(stimuli) {
     };
 
     // ---- timeline ----
-    var timeline = [consent, instructions]
+    // consent → instructions (2pg) → practice intro → practice → ready-to-start → 30 trials → surveys → save
+    var timeline = [consent, instructions, practiceIntro, practiceTrial, readyToStart]
         .concat(trialBlock)
         .concat([demographics, strategy, technical, finalSaveCard, save2half, saveDemographics, completion]);
 
     // ---- dev panel + skip-to ----
-    var N = N_TRIALS_PER_PARTICIPANT, m = midpoint;
+    // indices: 0=consent, 1=instructions, 2=practice intro, 3=practice, 4=ready, 5=trial1, ...
+    var N = N_TRIALS_PER_PARTICIPANT;
     initDevPanel([
         { label: 'Consent',              index: 0 },
         { label: 'Instructions',         index: 1 },
-        { label: 'Trial 1',              index: 2 },
-        { label: 'Trial 20',             index: 23 },
-        { label: 'About you',            index: N + 4 },
-        { label: 'How did you decide?',  index: N + 5 },
-        { label: 'Last questions',       index: N + 6 },
+        { label: 'Practice intro',       index: 2 },
+        { label: 'Practice trial',       index: 3 },
+        { label: 'Ready to start',       index: 4 },
+        { label: 'Trial 1',              index: 5 },
+        { label: 'Trial 15 (halfway)',   index: 20 },
+        { label: 'About you',            index: N + 7 },
+        { label: 'How did you decide?',  index: N + 8 },
+        { label: 'Last questions',       index: N + 9 },
     ]);
 
     var skipIdx = IS_TESTING ? (parseInt(urlParams.get('skip'), 10) || 0) : 0;
