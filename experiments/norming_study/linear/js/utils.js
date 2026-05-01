@@ -83,6 +83,11 @@ function applyProductionProtections() {
     document.addEventListener('fullscreenchange', function() {
         overlay.style.display = document.fullscreenElement ? 'none' : 'flex';
     });
+    setInterval(function() {
+        if (window.outerWidth - window.innerWidth > 160 || window.outerHeight - window.innerHeight > 160) {
+            overlay.style.display = 'flex';
+        }
+    }, 1000);
 
     var lastActivity = Date.now();
     ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'].forEach(evt =>
