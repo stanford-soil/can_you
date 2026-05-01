@@ -1,5 +1,5 @@
 // ---- study config ----
-var IS_TESTING   = true;         // true = dev mode: panel visible, protections off
+var IS_TESTING   = false;         // true = dev mode: panel visible, protections off
 var TESTING_MODE = IS_TESTING;   // alias used by main.js (applyProductionProtections gate)
 
 const experimentIdOSF       = 'H9cxh2VA14kV';
