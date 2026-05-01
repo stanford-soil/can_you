@@ -223,7 +223,7 @@ function initInstrDemoGrid(axisOrder, colorMap) {
             case 1:
                 grid.setSliderVisible(true);
                 grid.setInteractable(false);  // locked until invite at step 5
-                setCaption('<div style="animation:fadeIn 500ms ease both;">You\'ll use a slider like this one to give your answer.</div>');
+                setCaption('<div style="animation:fadeIn 500ms ease both;">You\'ll use a slider like this one to give your answer</div>');
                 break;
 
             case 2:
@@ -237,7 +237,7 @@ function initInstrDemoGrid(axisOrder, colorMap) {
                 break;
 
             case 4:
-                setCaption('<div style="animation:fadeIn 500ms ease both;">…drag left for fewer.</div>');
+                setCaption('<div style="animation:fadeIn 500ms ease both;">…drag left for fewer</div>');
                 driftToCount(28, 1800, null);
                 break;
 
@@ -254,7 +254,7 @@ function initInstrDemoGrid(axisOrder, colorMap) {
                             if (hasInteracted) return;
                             hasInteracted = true;
                             grid.setInviteActive(false);
-                            setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like.</div>');
+                            setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like</div>');
                             updateDots(6);
                         };
                     }
@@ -270,7 +270,7 @@ function initInstrDemoGrid(axisOrder, colorMap) {
         timers.forEach(clearTimeout);
         timers = [];
         grid.setInviteActive(false);
-        setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like.</div>');
+        setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like</div>');
         updateDots(6);
         showReplayBtn();
     };

@@ -266,6 +266,20 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
             f.g.style.fill = cfg.getFill(f.col, f.row, sx, syL, syR, stage);
         });
 
+        // hide left elements when no left group; hide right elements when no right group
+        if (stage >= 2) {
+            var leftVis = sx > 0 ? '1' : '0';
+            hl.style.opacity         = leftVis;
+            knobL.style.opacity      = leftVis;
+            leftPanel.style.opacity  = leftVis;
+        }
+        if (stage >= 3) {
+            var rightVis = sx < 10 ? '1' : '0';
+            hr.style.opacity         = rightVis;
+            knobR.style.opacity      = rightVis;
+            rightPanel.style.opacity = rightVis;
+        }
+
         // marginal pills — positions always update so they track v-line
         pLeft.style.left  = (xPx / 2) + 'px';
         pLeft.style.top   = (size / 2) + 'px';
@@ -331,9 +345,11 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
 
     function updateIsComplete() {
         if (stage < 3) { isComplete = false; return; }
-        // sx===10: no right group, so only need L interaction
-        // sx===0 or normal: need R interaction
-        isComplete = !rightNeeded ? hasInteractedL : hasInteractedR;
+        var noLeft  = sx === 0;
+        var noRight = sx === 10;
+        if (noLeft)  { isComplete = hasInteractedR; return; }
+        if (noRight) { isComplete = hasInteractedL; return; }
+        isComplete = hasInteractedL && hasInteractedR;
     }
 
     // ---- drag ----
@@ -341,8 +357,10 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
         if (!r) r = area.getBoundingClientRect();
         var lx = (cx - r.left) / size;
         var ly = (cy - r.top)  / size;
-        if (dragging === 'v')      sx  = bcSnapVal(lx);
-        else if (dragging === 'L') { syL = bcSnapVal(ly); hasInteractedL = true; }
+        if (dragging === 'v') {
+            sx = bcSnapVal(lx);
+            if (stage === 2 && sx === 0) advanceStage(); // no left group, auto-advance to show right
+        } else if (dragging === 'L') { syL = bcSnapVal(ly); hasInteractedL = true; }
         else if (dragging === 'R') { syR = bcSnapVal(ly); hasInteractedR = true; }
         updateIsComplete();
         render();
@@ -388,8 +406,7 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
         dragging = null;
         if (stage === 1 && prev === 'v') {
             if (sx === 0) {
-                // all on right — skip left line, show right line directly
-                leftNeeded = false;
+                // no left group — jump straight to stage 3, show right panel
                 stage = 3;
                 if (stage2RT === null) stage2RT = Math.round(performance.now() - trialStartT);
                 if (stage3RT === null) stage3RT = Math.round(performance.now() - trialStartT);
@@ -399,24 +416,11 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
                 updateIsComplete();
                 render();
                 if (ctrl.onStageAdvance) ctrl.onStageAdvance(3);
-            } else if (sx === 10) {
-                // all on left — left line only, no right line needed
-                rightNeeded = false;
-                advanceStage(); // → stage 2
             } else {
-                advanceStage(); // normal → stage 2
+                advanceStage(); // sx=10 or normal → stage 2; render() hides right panel if sx=10
             }
         } else if (stage === 2 && prev === 'L') {
-            if (!rightNeeded) {
-                // sx was 10 — finalize without showing right line
-                stage = 3;
-                if (stage3RT === null) stage3RT = Math.round(performance.now() - trialStartT);
-                updateIsComplete();
-                render();
-                if (ctrl.onStageAdvance) ctrl.onStageAdvance(3);
-            } else {
-                advanceStage(); // normal → stage 3
-            }
+            advanceStage(); // → stage 3; render() hides right panel if sx=10
         }
         if (stage === 1) area.style.cursor = 'ew-resize';
     }
@@ -622,10 +626,9 @@ function buildBentCrosshairTrial(stimulus, axisOrder, colorMap, trialIndex, jsPs
                 if (submitting) { hintEl.style.display = 'none'; return; }
                 var state = grid.getState();
                 if (state.isComplete) { hintEl.style.display = 'none'; return; }
-                if (stg === 1)                          hintEl.textContent = 'Drag the vertical line to start';
-                else if (stg === 2)                     hintEl.textContent = 'Now adjust the left line';
-                else if (stg === 3 && !state.rightNeeded) hintEl.textContent = 'Adjust the left line to set your answer';
-                else if (stg === 3)                     hintEl.textContent = 'Now adjust the right line';
+                if (stg === 1)         hintEl.textContent = 'Drag the vertical line to start';
+                else if (stg === 2)    hintEl.textContent = 'Now adjust the left line';
+                else if (stg === 3)    hintEl.textContent = state.sx === 10 ? 'Adjust the left line to set your answer' : 'Now adjust the right line';
                 hintEl.style.display = '';
             }
 
