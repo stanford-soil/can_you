@@ -190,7 +190,7 @@ function initStudyWaffle(stimuli) {
                     <h2 class="w-instr-title">Try it out</h2>
                     <div class="w-instr-rule"></div>
                     <div class="w-instr-body">
-                        <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both;">You'll now get to try out a practice scenario.</p>
+                        <p style="animation: fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both;">You'll now get to try out a practice scenario</p>
                     </div>
                     <hr class="w-hr">
                     <div class="w-instr-footer" id="w-practice-intro-footer"></div>
