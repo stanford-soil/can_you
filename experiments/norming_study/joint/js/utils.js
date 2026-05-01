@@ -13,7 +13,10 @@ function logToBrowser(ctx, variable) {
 // prolificID when available, else subjectID
 function getFilePrefix(jsPsych) {
     var d = jsPsych.data.dataProperties;
-    var id = d.prolificID || d.subjectID;
+    var pid = d.prolificID;
+    // unresolved Prolific template or URL-unsafe chars → fall back to random subjectID
+    if (!pid || pid.includes('{') || pid.includes('%')) pid = null;
+    var id = (pid || d.subjectID).replace(/[^a-zA-Z0-9_\-]/g, '');
     return (TEST ? 'DEBUG_' : '') + d.sessionTimestamp + '_' + id;
 }
 

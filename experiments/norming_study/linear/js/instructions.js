@@ -61,7 +61,8 @@ function getInstructionPagesWaffle(axisOrder) {
 
 
 // ---- per-page gate times (ms) ----
-var INSTR_GATES = [2500, 23000, 3000];
+// page 1 (demo): timer is a minimum read floor; interaction is what actually unlocks
+var INSTR_GATES = [2500, 6000, 3000];
 var _instrDemoCleanup = null;
 
 // called from main.js on_load + nav handler
@@ -105,18 +106,38 @@ function setupInstrPage(page, axisOrder, colorMap) {
 
         if (window._instrGateTimer) clearTimeout(window._instrGateTimer);
         var gateMs = INSTR_GATES[page] || 2500;
-        window._instrGateTimer = setTimeout(function() {
-            var nb = document.getElementById('jspsych-instructions-next');
-            if (nb) nb.disabled = false;
-            var h = document.getElementById('w-instr-hint');
-            if (h) h.style.display = 'none';
-        }, gateMs);
 
         if (page === 1) {
+            // demo page: both timer floor AND interaction required
+            window._instrTimerDone  = false;
+            window._instrInteracted = false;
+            window._instrTryUnlock  = function() {
+                if (!window._instrTimerDone || !window._instrInteracted) {
+                    if (window._instrTimerDone && !window._instrInteracted) {
+                        var h = document.getElementById('w-instr-hint');
+                        if (h) { h.textContent = 'Try dragging the slider above'; h.style.display = ''; }
+                    }
+                    return;
+                }
+                var nb = document.getElementById('jspsych-instructions-next');
+                if (nb) nb.disabled = false;
+                var h = document.getElementById('w-instr-hint');
+                if (h) h.style.display = 'none';
+            };
+            window._instrGateTimer = setTimeout(function() {
+                window._instrTimerDone = true;
+                window._instrTryUnlock();
+            }, gateMs);
             if (_instrDemoCleanup) { _instrDemoCleanup(); _instrDemoCleanup = null; }
             _instrDemoCleanup = initInstrDemoGrid(axisOrder, colorMap);
         } else {
             if (_instrDemoCleanup) { _instrDemoCleanup(); _instrDemoCleanup = null; }
+            window._instrGateTimer = setTimeout(function() {
+                var nb = document.getElementById('jspsych-instructions-next');
+                if (nb) nb.disabled = false;
+                var h = document.getElementById('w-instr-hint');
+                if (h) h.style.display = 'none';
+            }, gateMs);
         }
     }, 30);
 }
@@ -256,6 +277,8 @@ function initInstrDemoGrid(axisOrder, colorMap) {
                             grid.setInviteActive(false);
                             setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like</div>');
                             updateDots(6);
+                            window._instrInteracted = true;
+                            if (window._instrTryUnlock) window._instrTryUnlock();
                         };
                     }
                 });
@@ -273,6 +296,8 @@ function initInstrDemoGrid(axisOrder, colorMap) {
         setCaption('<div style="animation:fadeIn 400ms ease both; font-size:15px; color:var(--muted);">Drag the slider anywhere you like</div>');
         updateDots(6);
         showReplayBtn();
+        window._instrInteracted = true;
+        if (window._instrTryUnlock) window._instrTryUnlock();
     };
 
     goStep(0);

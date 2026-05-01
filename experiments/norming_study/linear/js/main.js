@@ -357,10 +357,9 @@ function initStudyLinear(stimuli) {
                 ${getSectionTickerHTML('about')}
                 <div class="w-card" style="text-align:center; padding:64px 56px 56px;">
                     <div class="w-completion-check">✓</div>
-                    <h2 class="w-completion-title">Thank you so much.</h2>
+                    <h2 class="w-completion-title">Thank you so much!</h2>
                     <p style="font-size:17px; color:#3A332A; line-height:1.6; max-width:540px; margin:0 auto 32px;">
-                        Your responses have been saved and will really help our research.
-                        We're grateful for your time and careful attention.
+                        Your responses have been saved and will really help our research!
                     </p>
                     <p style="font-size:14px; color:var(--muted); margin-bottom:0;">
                         You'll be redirected to Prolific automatically in a few seconds.

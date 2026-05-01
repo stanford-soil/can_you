@@ -44,8 +44,8 @@ function getInstructionPagesWaffle(axisOrder) {
 
 
 // ---- per-page gate times (ms) ----
-// page 0: timer only; page 1: timer + grid interaction required
-var INSTR_GATES = [2500, 63000];
+// page 0: timer only; page 1: timer floor + grid interaction required (interaction is what unlocks)
+var INSTR_GATES = [2500, 8000];
 var _instrDemoCleanup = null;
 
 function setupInstrPage(page, axisOrder, colorMap) {
