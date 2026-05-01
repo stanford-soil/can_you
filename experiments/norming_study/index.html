@@ -120,11 +120,15 @@
 
     // ---- routing constants (unchanged from before) ----
     const DATAPIPE_ID     = 'H9cxh2VA14kV';
-    const CONDITIONS      = ['joint', 'linear-aw', 'linear-wa'];
-    const ASSIGNMENT_LIST = [0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0];
+    const CONDITIONS      = ['joint-aw', 'joint-wa', 'linear-aw', 'linear-wa'];
+    const ASSIGNMENT_LIST = [0,1,2,3, 2,3,0,1, 1,0,3,2, 3,2,1,0, 0,3,1,2, 2,1,3,0, 3,0,2,1, 1,2,0,3, 0,2,3,1, 3,1,0,2, 1,3,2,0, 2,0,1,3, 0,1,3,2, 3,2,0,1, 2,0,3,1, 1,3,0,2, 0,2,1,3, 3,1,2,0, 1,0,2,3, 2,3,1,0, 0,3,2,1, 1,2,3,0, 3,0,1,2, 2,1,0,3, 0,3,1,2];
 
     function conditionToURL(condition, params) {
-      if (condition === 'joint') {
+      if (condition === 'joint-aw') {
+        params.set('axis', 'AW');
+        return `./joint/?${params.toString()}`;
+      } else if (condition === 'joint-wa') {
+        params.set('axis', 'WA');
         return `./joint/?${params.toString()}`;
       } else if (condition === 'linear-aw') {
         params.set('axis', 'AW');
@@ -185,6 +189,7 @@
       }
 
       params.set('assignment_idx', assignmentIdx);
+      params.set('condition', condition);
       window.location.replace(conditionToURL(condition, params));
     }
 
