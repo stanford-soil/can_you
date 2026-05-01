@@ -111,6 +111,7 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
     var FIG_W    = CELL * 0.56;
     var FIG_H    = CELL * 0.66;
     var V_ZONE   = 30;  // px within v-line for priority grab
+    var PILL_PAD = 28;  // min px from edge so pill doesn't overflow grid
 
     var sx = 5, syL = 5, syR = 5;
     var stage = 1;
@@ -285,8 +286,8 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
         pLeft.style.top   = (size / 2) + 'px';
         pRight.style.left = ((xPx + size) / 2) + 'px';
         pRight.style.top  = (size / 2) + 'px';
-        pLeft.style.display  = stage === 1 ? '' : 'none';
-        pRight.style.display = stage <= 2  ? '' : 'none';
+        pLeft.style.display  = (stage === 1 && sx > 0)  ? '' : 'none';
+        pRight.style.display = (stage <= 2  && sx < 10) ? '' : 'none';
 
         if (stage === 1) {
             pLeft.innerHTML  = '<span class="pill-n" style="color:'+cfg.stg1LeftColor+';">' +(n1*10)+'</span><span class="pill-lbl">'+cfg.stg1LeftLabel+'</span>';
@@ -300,27 +301,28 @@ function buildBentCrosshairGrid(parentEl, size, axisOrder, palette, opts) {
         var ltk = cfg.leftTopKey, lbk = cfg.leftBotKey;
         var rtk = cfg.rightTopKey, rbk = cfg.rightBotKey;
 
-        qpills[ltk].style.display = stage >= 2 ? '' : 'none';
-        qpills[lbk].style.display = stage >= 2 ? '' : 'none';
-        qpills[rtk].style.display = stage >= 3 ? '' : 'none';
-        qpills[rbk].style.display = stage >= 3 ? '' : 'none';
+        qpills[ltk].style.display = (stage >= 2 && sx > 0)  ? '' : 'none';
+        qpills[lbk].style.display = (stage >= 2 && sx > 0)  ? '' : 'none';
+        qpills[rtk].style.display = (stage >= 3 && sx < 10) ? '' : 'none';
+        qpills[rbk].style.display = (stage >= 3 && sx < 10) ? '' : 'none';
+
+        function clampPillTop(v) { return Math.max(PILL_PAD, Math.min(size - PILL_PAD, v)); }
 
         if (stage >= 2) {
             qpills[ltk].style.left = (xPx / 2) + 'px';
-            qpills[ltk].style.top  = (yLPx / 2) + 'px';
+            qpills[ltk].style.top  = clampPillTop(yLPx / 2) + 'px';
             qpills[ltk].innerHTML  = '<span class="pill-n" style="color:'+pal[ltk]+';">'+counts[ltk]+'</span><span class="pill-lbl">'+BC_LBLS[ltk]+'</span>';
             qpills[lbk].style.left = (xPx / 2) + 'px';
-            qpills[lbk].style.top  = ((yLPx + size) / 2) + 'px';
+            qpills[lbk].style.top  = clampPillTop((yLPx + size) / 2) + 'px';
             qpills[lbk].innerHTML  = '<span class="pill-n" style="color:'+pal[lbk]+';">'+counts[lbk]+'</span><span class="pill-lbl">'+BC_LBLS[lbk]+'</span>';
         }
         if (stage >= 3) {
             qpills[rtk].style.left = ((xPx + size) / 2) + 'px';
-            qpills[rtk].style.top  = (yRPx / 2) + 'px';
+            qpills[rtk].style.top  = clampPillTop(yRPx / 2) + 'px';
             qpills[rtk].innerHTML  = '<span class="pill-n" style="color:'+pal[rtk]+';">'+counts[rtk]+'</span><span class="pill-lbl">'+BC_LBLS[rtk]+'</span>';
             qpills[rbk].style.left = ((xPx + size) / 2) + 'px';
-            qpills[rbk].style.top  = ((yRPx + size) / 2) + 'px';
+            qpills[rbk].style.top  = clampPillTop((yRPx + size) / 2) + 'px';
             qpills[rbk].innerHTML  = '<span class="pill-n" style="color:'+pal[rbk]+';">'+counts[rbk]+'</span><span class="pill-lbl">'+BC_LBLS[rbk]+'</span>';
-
         }
     }
 

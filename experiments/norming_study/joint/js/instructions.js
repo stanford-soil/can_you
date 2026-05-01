@@ -225,7 +225,7 @@ function initInstrDemoGrid(axisOrder, colorMap) {
 
             case 3:
                 // drift v-line: 2 → 7 → 4
-                setCaption('Drag it left or right to set the split.');
+                setCaption('Drag it left or right to set the split');
                 chainAnimate([
                     {sx:2, syL:5, syR:5, dur:2700},
                     {sx:7, syL:5, syR:5, dur:2700},
