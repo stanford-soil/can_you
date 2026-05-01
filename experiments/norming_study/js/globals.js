@@ -17,7 +17,7 @@ const PAYMENT                 = 2.50; // TODO: update after pilot ($)
 const LAB_NAME      = "Social Interaction Lab";
 const PI_NAME       = "Robert Hawkins";
 const CONTACT_EMAIL = "mokeeffe@stanford.edu";
-const INSTITUTION   = "Stanford University";
+const INSTITUTION   = "Stanford Unahiversity";
 const LAB_LOGO      = "🌱";
 const STUDY_TITLE   = "Thinking About What People Do";
 

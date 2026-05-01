@@ -85,8 +85,11 @@ function applyProductionProtections() {
         return window.outerWidth  - window.innerWidth  <= 160
             && window.outerHeight - window.innerHeight <= 160;
     }
+    var hasEnteredFullscreen = false;
     function refreshOverlay() {
         var inFS = !!document.fullscreenElement;
+        if (inFS) hasEnteredFullscreen = true;
+        if (!hasEnteredFullscreen) return;
         if (inFS && dimOk()) { overlay.style.display = 'none'; return; }
         overlay.style.display = 'flex';
         var msg = document.getElementById('fs-overlay-msg');
