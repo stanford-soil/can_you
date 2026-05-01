@@ -105,15 +105,24 @@ function initStudyLinear(stimuli) {
 
     // ---- save helper ----
     function saveToDataPipe(filename, dataStr) {
+        if (IS_TESTING) {
+            console.log('[TEST] skipping DataPipe save:', filename, '\n', dataStr.slice(0, 200));
+            return Promise.resolve({ success: true });
+        }
         return fetch('https://pipe.jspsych.org/api/data/', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Accept: '*/*' },
             body: JSON.stringify({ experimentID: experimentIdOSF, filename: filename, data: dataStr })
-        }).then(function(r) { return r.json(); });
+        }).then(function(r) {
+            return r.json().then(function(data) {
+                if (!data.success) console.error('DataPipe rejected:', filename, data);
+                return data;
+            });
+        });
     }
 
-    function showSaveError(label) {
-        console.error('DataPipe save failed:', label);
+    function showSaveError(label, apiMsg) {
+        console.error('DataPipe save failed:', label, apiMsg || '');
         window.onbeforeunload = null;
         document.body.innerHTML = `
             <div style='font-family:var(--sans); text-align:center; margin:15vh auto; max-width:720px; color:var(--ink);'>
@@ -122,7 +131,7 @@ function initStudyLinear(stimuli) {
                     The upload to DataPipe was rejected. Please do not close this page.
                     Open the browser console and send the error message to the research team.
                 </p>
-                <p style='font-size:15px; color:var(--faint);'>Failed step: ${label}</p>
+                <p style='font-size:15px; color:var(--faint);'>Failed step: ${label}${apiMsg ? ' — ' + apiMsg : ''}</p>
             </div>`;
     }
 
@@ -242,14 +251,14 @@ function initStudyLinear(stimuli) {
 
         saveToDataPipe(getFilePrefix(jsPsych) + '_linear_1_half.csv', formatFirstHalf(jsPsych))
             .then(function(data) {
-                if (!data.success) { showSaveError('first half'); return; }
+                if (!data.success) { showSaveError('first half', data.message); return; }
                 dot.classList.add('saved');
                 label.classList.add('saved');
                 label.textContent = 'Saved';
                 btn.disabled = false;
                 if (hint) hint.style.display = 'none';
             })
-            .catch(function() { showSaveError('first half'); });
+            .catch(function(e) { showSaveError('first half', e && e.message); });
 
         btn.addEventListener('click', function() {
             jsPsych.finishTrial();
@@ -290,14 +299,14 @@ function initStudyLinear(stimuli) {
             saveToDataPipe(prefix + '_linear_2_half.csv',    formatSecondHalf(jsPsych)),
             saveToDataPipe(prefix + '_linear_demographics.csv', formatDemographics(jsPsych))
         ]).then(function(results) {
-            if (!results[0].success) { showSaveError('second half'); return; }
-            if (!results[1].success) { showSaveError('demographics'); return; }
+            if (!results[0].success) { showSaveError('second half', results[0].message); return; }
+            if (!results[1].success) { showSaveError('demographics', results[1].message); return; }
             dot.classList.add('saved');
             label.classList.add('saved');
             label.textContent = 'Saved';
             btn.disabled = false;
             if (hint) hint.style.display = 'none';
-        }).catch(function() { showSaveError('final save'); });
+        }).catch(function(e) { showSaveError('final save', e && e.message); });
 
         btn.addEventListener('click', function() { jsPsych.finishTrial(); });
     }

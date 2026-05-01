@@ -76,18 +76,33 @@ function applyProductionProtections() {
     overlay.innerHTML = `
         <div class='fullscreen-overlay-box'>
             <h2>Please return to fullscreen</h2>
-            <p>The study needs to run in fullscreen mode. Click below to continue.</p>
-            <button class='w-btn-primary' onclick="document.documentElement.requestFullscreen()">Return to Fullscreen</button>
+            <p id="fs-overlay-msg"></p>
+            <button class='w-btn-primary' id="fs-overlay-btn">Return to Fullscreen</button>
         </div>`;
     document.body.appendChild(overlay);
-    document.addEventListener('fullscreenchange', function() {
-        overlay.style.display = document.fullscreenElement ? 'none' : 'flex';
-    });
-    setInterval(function() {
-        if (window.outerWidth - window.innerWidth > 160 || window.outerHeight - window.innerHeight > 160) {
-            overlay.style.display = 'flex';
+
+    function dimOk() {
+        return window.outerWidth  - window.innerWidth  <= 160
+            && window.outerHeight - window.innerHeight <= 160;
+    }
+    function refreshOverlay() {
+        var inFS = !!document.fullscreenElement;
+        if (inFS && dimOk()) { overlay.style.display = 'none'; return; }
+        overlay.style.display = 'flex';
+        var msg = document.getElementById('fs-overlay-msg');
+        if (msg) msg.textContent = inFS
+            ? 'Please close any sidebars or extra panels (e.g. browser console), then click below to continue.'
+            : 'The study needs to run in fullscreen mode. Click below to continue.';
+    }
+    document.addEventListener('fullscreenchange', refreshOverlay);
+    setInterval(refreshOverlay, 1000);
+    document.getElementById('fs-overlay-btn').onclick = function() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(function() {});
+        } else {
+            refreshOverlay(); // already fullscreen — just re-check dims and hide if ok
         }
-    }, 1000);
+    };
 
     var lastActivity = Date.now();
     ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'].forEach(evt =>
