@@ -117,8 +117,6 @@ if len(joint):
 
 ## Figure 1 — P(able) × P(willing)
 
-Trial-level dots colored by condition; dark dots are grand mean item means. Marginal histograms stacked by condition.
-
 ```{python}
 item_stats = (trials.groupby('itemID')
               .agg(p_able_m=('p_able', 'mean'), p_willing_m=('p_willing', 'mean'),
@@ -176,8 +174,6 @@ fig.show()
 ```
 
 ## Figure 1b — Primary × Conditional
-
-Left: P(able) × P(willing|able) using joint-aw + linear-aw. Right: P(willing) × P(able|willing) using joint-wa + linear-wa. For linear conditions, the second slider is a soft conditional (rated after the first).
 
 ```{python}
 panels = [
@@ -254,8 +250,6 @@ fig1b.show()
 
 ## Item Table
 
-Click column headers to sort.
-
 ```{python}
 joint = trials[trials['trial_type'] == 'whyask-grid-trial']
 aw_j  = joint[joint['axisOrder'] == 'AW']
@@ -328,7 +322,7 @@ display(HTML(f'''
 
 ## Figure 2 — Joint Conditional Structure
 
-P(secondary|primary) vs. P(secondary|¬primary) for joint conditions. Points below the diagonal have positive dependence (primary=1 makes secondary more likely). D = P(secondary|primary) − P(secondary|¬primary).
+D = P(secondary|primary) − P(secondary|¬primary).
 
 ```{python}
 joint = trials[trials['trial_type'] == 'whyask-grid-trial'].copy()
