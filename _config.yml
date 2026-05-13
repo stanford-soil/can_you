@@ -1,4 +1,2 @@
 exclude:
-  - analyses/norming_study/explore.qmd
-  - analyses/norming_study/explore.ipynb
-  - analyses/norming_study/preprocess.ipynb
+  - analyses
