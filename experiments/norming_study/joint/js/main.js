@@ -41,8 +41,11 @@ function initStudyWaffle(stimuli) {
         });
     });
 
-    // axis counterbalancing
-    var axisOrder = jsPsych.randomization.sampleWithoutReplacement(['AW', 'WA'], 1)[0];
+    // axis counterbalancing — ?axis=AW|WA overrides random (used by router + dev testing)
+    var urlAxis   = urlParams.get('axis');
+    var axisOrder = (urlAxis === 'AW' || urlAxis === 'WA')
+        ? urlAxis
+        : jsPsych.randomization.sampleWithoutReplacement(['AW', 'WA'], 1)[0];
     jsPsych.data.addProperties({ axisOrder: axisOrder });
 
     // color assignment: use coastal palette (colors fixed per semantic quadrant)

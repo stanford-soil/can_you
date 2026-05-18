@@ -1,8 +1,8 @@
 import random, json
 
 # conditions map to subfolders: 0=slider, 1=waffle
-N_CONDITIONS   = 2
-N_PARTICIPANTS = 100   # set > target N; DataPipe n_conditions must match ASSIGNMENT_LIST.length
+N_CONDITIONS   = 4
+N_PARTICIPANTS = 500   # set > target N; DataPipe n_conditions must match ASSIGNMENT_LIST.length
 
 assert N_PARTICIPANTS % N_CONDITIONS == 0, "N_PARTICIPANTS must be divisible by N_CONDITIONS"
 
