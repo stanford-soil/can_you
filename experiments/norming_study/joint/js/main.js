@@ -20,6 +20,16 @@ function initStudyWaffle(stimuli) {
     jsPsych.data.addProperties({ studyID:    studyID });
     jsPsych.data.addProperties({ sessionID:  sessionID });
     jsPsych.data.addProperties({ captchaOk:  captchaOk });
+
+    // roundtable — set user ID; capture session ID once tracker is ready
+    var rtSessionId = null;
+    var setRt = function() {
+        if (prolificID) window.setRoundtableUserId?.(prolificID);
+        rtSessionId = sessionStorage.getItem('rtSessionId');
+        jsPsych.data.addProperties({ roundtableSessionId: rtSessionId });
+    };
+    setRt();
+    window.addEventListener('roundtable:ready', setRt, { once: true });
     jsPsych.data.addProperties({ startTime:  Date.now() });
     var _now = new Date();
     var _ts = [_now.getFullYear(), String(_now.getMonth()+1).padStart(2,'0'), String(_now.getDate()).padStart(2,'0')].join('') +

@@ -135,11 +135,12 @@ function getBaseSaveFields(d) {
         prolificID:      d.prolificID,
         studyID:         d.studyID,
         sessionID:       d.sessionID,
-        captchaOk:       d.captchaOk,
-        DEBUG:           TEST ? 1 : 0,
-        axisOrder:       d.axisOrder,
-        colorAssignment: d.colorAssignment,
-        vizMode:         VIZ_MODE,
+        captchaOk:            d.captchaOk,
+        roundtableSessionId:  d.roundtableSessionId || '',
+        DEBUG:                TEST ? 1 : 0,
+        axisOrder:            d.axisOrder,
+        colorAssignment:      d.colorAssignment,
+        vizMode:              VIZ_MODE,
     };
 }
 
