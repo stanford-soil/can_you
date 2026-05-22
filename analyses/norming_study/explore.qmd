@@ -36,6 +36,14 @@ PILOT       = 'c_pilot_prolific'
 RESULTS_DIR = f'../../results/norming_study/{PILOT}'
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
+# set to True to filter trials to the 100-item full study set
+FILTER_TO_STUDY_STIMULI = True
+
+import re as _re
+def _load_study_ids(path='../../experiments/norming_study/stimuli/stimuli_full_study.js'):
+    with open(path) as f: js = f.read()
+    return set(int(x) for x in _re.findall(r'"itemID":\s*(\d+)', js))
+
 C = {'joint-aw': '#1F5572', 'joint-wa': '#5C8FA8',
      'linear-aw': '#D69A57', 'linear-wa': '#A8A096'}
 C_QUAD = {'AW': '#1F5572', 'ANW': '#5C8FA8', 'NAW': '#D69A57', 'NANW': '#A8A096'}
@@ -80,6 +88,10 @@ def prep(df):
     return df
 
 trials = prep(pd.read_csv(f'../../data/norming_study/processed/{PILOT}/trials.csv'))
+if FILTER_TO_STUDY_STIMULI:
+    _study_ids = _load_study_ids()
+    trials = trials[pd.to_numeric(trials['itemID'], errors='coerce').isin(_study_ids)].copy()
+    print(f'[filtered to study stimuli: {trials["itemID"].nunique()} items]')
 aw_m = trials[trials['axisOrder'] == 'AW']
 wa_m = trials[trials['axisOrder'] == 'WA']
 ```

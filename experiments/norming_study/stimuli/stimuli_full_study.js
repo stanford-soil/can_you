@@ -32,7 +32,7 @@ var STIMULI_DATA = {
     {
       "itemID": 5,
       "actionPhrase": "rewire the broken electrical outlet in my apartment",
-      "vignette": "A close friend's electrical outlet stopped working and they need it for their work setup. They look at you hopefully and say:"
+      "vignette": "A close friend's electrical outlet stopped working and they need it for their work setup. They look at you and say:"
     },
 
     {
@@ -112,7 +112,7 @@ var STIMULI_DATA = {
     {
       "itemID": 23,
       "actionPhrase": "build a website for my new business",
-      "vignette": "A coworker is launching their business but can't afford a web designer. They turn to you hopefully and say:"
+      "vignette": "A coworker is launching their business but can't afford a web designer. They turn to you and say:"
     },
 
     {
@@ -475,7 +475,7 @@ var STIMULI_DATA = {
 
     {
       "itemID": 98,
-      "actionPhrase": "step on it to put it out of its misery",
+      "actionPhrase": "put it out of its misery",
       "vignette": "You're walking down the sidewalk with a friend and come across a squirrel that's been hit by a car. It's clearly badly hurt and suffering. Your friend can't bring themselves to do it and looks at you:"
     },
 

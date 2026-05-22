@@ -63,8 +63,10 @@ function buildSliderGrid(parentEl, gW, gH, yesColor, baseColor, opts) {
         cell.style.width  = cellW + 'px';
         cell.style.height = cellH + 'px';
 
-        var rainDelay = (row * 10 + col) * 14;
-        cell.style.animation = 'figureRain 500ms cubic-bezier(.2,.8,.2,1) ' + rainDelay + 'ms both';
+        if (opts.figuresRaining) {
+            var rainDelay = (row * 10 + col) * 14;
+            cell.style.animation = 'figureRain 500ms cubic-bezier(.2,.8,.2,1) ' + rainDelay + 'ms both';
+        }
 
         var svg = document.createElementNS(NS, 'svg');
         svg.setAttribute('viewBox', '0 0 12 14');
@@ -349,8 +351,8 @@ function buildLinearTrial(stimulus, axisOrder, colorMap, trialIndex, jsPsych) {
 
             // grid1: figures start grey, turns grid1Color
             // grid2: figures start grid1Color ("given all 100 are dim1"), turns grid2Color
-            var grid1 = buildSliderGrid(grid1Cont, W_LINEAR_W, W_LINEAR_H, grid1Color, noColor);
-            var grid2 = buildSliderGrid(grid2Cont, W_LINEAR_W, W_LINEAR_H, grid2Color, grid1Color);
+            var grid1 = buildSliderGrid(grid1Cont, W_LINEAR_W, W_LINEAR_H, grid1Color, noColor, { figuresRaining: true });
+            var grid2 = buildSliderGrid(grid2Cont, W_LINEAR_W, W_LINEAR_H, grid2Color, grid1Color, { figuresRaining: isFirstFew });
 
             grid1.onChange = function(state) {
                 lastCount1 = state.count;
