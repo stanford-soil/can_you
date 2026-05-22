@@ -520,7 +520,7 @@ var STIMULI_DATA = {
     {
       "itemID": 106,
       "actionPhrase": "come to my improv show even though you're not into improv",
-      "vignette": "A friend is performing in an improv comedy night and knows you find improv a bit tedious. They text you anyway:"
+      "vignette": "A friend is performing in an improv comedy night and knows you don't really like improv or going out in general. They text you anyway:"
     },
 
     {
