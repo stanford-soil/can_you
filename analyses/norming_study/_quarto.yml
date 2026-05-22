@@ -1,2 +1,2 @@
 project:
-  output-dir: ../../results/norming_study/c_pilot_prolific
+  post-render: _save_output.py

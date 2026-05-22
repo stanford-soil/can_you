@@ -4,11 +4,13 @@ function initStudyWaffle(stimuli) {
     logToBrowser('initializing grid study', null);
     if (!TESTING_MODE) applyProductionProtections();
 
-    var urlParams  = new URLSearchParams(window.location.search);
-    var prolificID = urlParams.get('PROLIFIC_PID');
-    var studyID    = urlParams.get('STUDY_ID');
-    var sessionID  = urlParams.get('SESSION_ID');
-    var captchaOk  = urlParams.get('captcha_ok');
+    var urlParams      = new URLSearchParams(window.location.search);
+    var prolificID     = urlParams.get('PROLIFIC_PID');
+    var studyID        = urlParams.get('STUDY_ID');
+    var sessionID      = urlParams.get('SESSION_ID');
+    var captchaOk      = urlParams.get('captcha_ok');
+    var assignmentIdx  = urlParams.get('assignment_idx');
+    var routedCondition = urlParams.get('condition');
 
     var jsPsych = initJsPsych({
         show_progress_bar: false,   // using our own progress strip
@@ -19,7 +21,9 @@ function initStudyWaffle(stimuli) {
     jsPsych.data.addProperties({ prolificID: prolificID });
     jsPsych.data.addProperties({ studyID:    studyID });
     jsPsych.data.addProperties({ sessionID:  sessionID });
-    jsPsych.data.addProperties({ captchaOk:  captchaOk });
+    jsPsych.data.addProperties({ captchaOk:      captchaOk });
+    jsPsych.data.addProperties({ assignmentIdx:  assignmentIdx });
+    jsPsych.data.addProperties({ routedCondition: routedCondition });
 
     // roundtable — set user ID; capture session ID once tracker is ready
     var rtSessionId = null;
