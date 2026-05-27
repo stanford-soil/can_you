@@ -1,0 +1,660 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{parskip}
+
+\hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black}
+
+\definecolor{abilityblue}{HTML}{2C5F8A}
+\definecolor{willgreen}{HTML}{3A7A4E}
+
+\title{\textbf{``Can you?'' as Indirect Request}\\[4pt]
+\large A Rational Speech Acts Model: Ability-Only and Willingness Extension}
+\author{can\_you project}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+% ============================================================
+\section{Overview}
+% ============================================================
+
+The sentence \emph{``Can you pass the salt?''} is grammatically a yes/no question
+about ability, yet speakers routinely use it as a request. This document presents
+two versions of a \textbf{Rational Speech Acts (RSA)} model~\cite{frank2012predicting,goodman2016pragmatic}
+that explain---without ad hoc context-specific stipulations, and derived from
+the literal semantics of ``can you?'' and standard RSA assumptions---when a
+listener should interpret \emph{``Can you?''} as a request versus a genuine
+information-seeking question, and how that interpretation drives whether the
+listener acts.
+
+\begin{itemize}
+  \item \textbf{Ability-only model} (\texttt{whyask\_ability.ipynb},
+        \texttt{test\_minimal.py}): compliance depends solely on ability
+        ($\mu > \theta$). One context parameter: $f_{\text{ctx}}$ (feasibility).
+  \item \textbf{Willingness model} (\texttt{whyask\_with\_willingness.ipynb}):
+        compliance requires ability \emph{and} willingness
+        (($\mu > \theta$) \emph{and} ($v > \phi$)). Two context parameters:
+        $f_{\text{ctx}}$ (ability) and $w_{\text{ctx}}$ (willingness).
+\end{itemize}
+
+The core insight shared by both: \textbf{context determines the informational
+value of asking.} When ability is already common ground (everyone knows you can
+pass the salt), the question carries almost no information, so a pragmatic
+listener infers the speaker must have had a different motive.
+
+Both models use two levels of speaker/addressee recursion (S1/A1 and S2/A2),
+implemented in JAX with the \texttt{memo} probabilistic DSL.
+
+% ============================================================
+\section{Shared Setup}
+% ============================================================
+
+\subsection{Utterances, goals, responses}
+
+\[
+  \mathcal{U} = \{\,\textsc{can},\ \textsc{imp},\ \textsc{null}\,\}
+  \qquad
+  \mathcal{G} = \{\,\textsc{info},\ \textsc{action}\,\}
+  \qquad
+  \mathcal{R} = \{\,\textsc{act},\ \textsc{pass}\,\}
+\]
+
+\textsc{can} = ``Can you?''; \textsc{imp} = direct imperative (``Pass the salt'');
+\textsc{null} = silence. \textsc{info} goal = learn whether addressee can/will act;
+\textsc{action} goal = get them to do it.
+
+\subsection{Information gain}
+
+The literal semantics of \textsc{can} is: \emph{``Is $\mu > \theta$?''}---a
+binary question about ability. Its utility for an \textsc{info}-goal speaker
+is the mutual information between $\mu$ and the answer $Y = \mathbf{1}[\mu > \theta]$:
+\[
+  \mathrm{IG}(f_{\text{ctx}}, \theta)
+  = H\!\left[\pi(\mu)\right]
+  - P(Y{=}1)\, H\!\left[\pi(\mu \mid Y{=}1)\right]
+  - P(Y{=}0)\, H\!\left[\pi(\mu \mid Y{=}0)\right]
+\]
+where $\pi(\mu \mid f_{\text{ctx}})$ is a Beta prior (see below) and
+$H[\cdot]$ is Shannon entropy in nats. This function is identical in both model
+versions---\textsc{can} is always framed as an ability question grammatically.
+
+\textbf{Intuition:} When $f_{\text{ctx}} \approx 1$, the prior over $\mu$ is
+concentrated near 1; the answer is unsurprising---IG $\approx 0$. When
+$f_{\text{ctx}}$ is low, the answer is genuinely uncertain---IG is high.
+
+\subsection{Response semantics: acting entails yes}
+
+\textbf{Acting answers the ability question.} If you pass the salt, you've implicitly
+confirmed you can. This motivates a single response utility function (shared by both models):
+\[
+  \mathrm{EU}_{\text{respond}}(r, g, \ldots) =
+  \begin{cases}
+    \text{comply} & \text{if } r = \textsc{act} \\
+    \mathbf{1}[g = \textsc{info}] & \text{if } r = \textsc{pass}
+  \end{cases}
+\]
+where ``comply'' is defined differently across model versions (see below).
+Passing is good only for an info-goal speaker (truthful verbal answer); acting
+requires the addressee to actually be able (and willing). Zero new parameters.
+
+\subsection{Speaker social cost}
+
+The imperative incurs a flat face-threat cost $\delta = 0.7$ regardless of context.
+\textsc{can} and \textsc{null} are costless (or near-costless in the notebook
+version: $c_{\text{can}} = 0.1$).
+
+\subsection{Softmax choice}
+
+Both speakers and addressees choose via softmax with rationality $\alpha = 10$:
+\[
+  P(x \mid \ldots) \;\propto\; \exp\!\left(\alpha \cdot \mathrm{EU}(x, \ldots)\right)
+\]
+
+% ============================================================
+\section{Ability-Only Model}
+% ============================================================
+\label{sec:ability}
+
+\subsection{Setup additions}
+
+One latent variable for whether the addressee can act:
+$\mu \in [0,1]$ (ability level), $\theta \in [0,1]$ (threshold). Addressee is
+``able'' iff $\mu > \theta$.
+
+\paragraph{Feasibility prior.}
+\[
+  \mu \sim \mathrm{Beta}\!\left(f_{\text{ctx}}\cdot k,\; (1 - f_{\text{ctx}})\cdot k\right), \quad k = 10
+\]
+Single context parameter $f_{\text{ctx}} \in [0,1]$.
+
+\paragraph{Goal prior.} Action goals presuppose feasibility; given feasibility,
+max-entropy:
+\[
+  P(g = \textsc{action} \mid f_{\text{ctx}}) = \tfrac{1}{2}\,f_{\text{ctx}}
+  \qquad
+  P(g = \textsc{info} \mid f_{\text{ctx}}) = 1 - \tfrac{1}{2}\,f_{\text{ctx}}
+\]
+
+\paragraph{Compliance.}
+\[
+  \text{comply} = \mathbf{1}[\mu > \theta]
+\]
+
+\paragraph{Test contexts.}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lc}
+\toprule
+\textbf{Context} & $f_{\text{ctx}}$ \\
+\midrule
+Benchpress 150 lbs & 0.10 \\
+Drive me home      & 0.70 \\
+Call me later      & 0.90 \\
+Pass the salt      & 0.99 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Speaker utility (S1)}
+
+\[
+  \mathrm{EU}_{S1}(u, g, \mu, \theta, f_{\text{ctx}}) =
+  \underbrace{\mathbf{1}[g = \textsc{action}]\cdot \mathbf{1}[u = \textsc{imp}]\cdot\mathbf{1}[\mu > \theta]}_{\text{action utility}}
+  + \underbrace{\mathbf{1}[g = \textsc{info}]\cdot \mathbf{1}[u = \textsc{can}]\cdot\mathrm{IG}(f_{\text{ctx}}, \theta)}_{\text{info utility}}
+  - \underbrace{\delta\cdot\mathbf{1}[u = \textsc{imp}]}_{\text{social cost}}
+\]
+
+S1 knows goal $g$, marginalizes over $(\mu, \theta)$:
+\[
+  P_{S1}(u \mid g, f_{\text{ctx}}) \;\propto\;
+  \exp\!\Bigl(\alpha\cdot \mathbb{E}_{\mu \sim \pi(\cdot|f_{\text{ctx}}),\, \theta \sim \mathrm{Unif}}\!\bigl[\mathrm{EU}_{S1}(u, g, \mu, \theta, f_{\text{ctx}})\bigr]\Bigr)
+\]
+
+\subsection{Level-1 addressee (A1)}
+
+A1 observes $u = \textsc{can}$ and updates on S1's distribution:
+\[
+  P_{A1}(g \mid u = \textsc{can}) \;\propto\; P(g \mid f_{\text{ctx}})\cdot P_{S1}(\textsc{can} \mid g, f_{\text{ctx}})
+\]
+
+Let $p_a = P_{A1}(g{=}\textsc{action} \mid u{=}\textsc{can})$. A1's response given $(\mu, \theta)$:
+\[
+  P_{A1}(\textsc{act} \mid \mu, \theta) =
+  \frac{\exp(\alpha\cdot\mathbf{1}[\mu > \theta])}
+       {\exp(\alpha\cdot\mathbf{1}[\mu > \theta]) + \exp(\alpha\cdot(1 - p_a))}
+\]
+
+Aggregate compliance (marginalized):
+\[
+  P_{A1}(\textsc{act} \mid f_{\text{ctx}}) =
+  \mathbb{E}_{\mu \sim \pi(\cdot|f_{\text{ctx}})}\,
+  \mathbb{E}_{\theta \sim \mathrm{Unif}}\!\left[P_{A1}(\textsc{act} \mid \mu, \theta)\right]
+\]
+
+\subsection{Level-2 speaker (S2)}
+
+S2 anticipates A1's compliance when using \textsc{can} with an action goal:
+\[
+  u_{\text{act}}^{S2}(u, f_{\text{ctx}}) =
+  \begin{cases}
+    P_{A1}(\textsc{act} \mid f_{\text{ctx}}) & u = \textsc{can} \\
+    \mathbf{1}[\mu > \theta] & u = \textsc{imp} \\
+    0 & u = \textsc{null}
+  \end{cases}
+\]
+
+Everything else (info utility, $\delta$) is unchanged. S2 can use \textsc{can}
+to get compliance while avoiding the face cost of \textsc{imp}---but only in
+high-$f_{\text{ctx}}$ contexts where A1 is likely to comply.
+
+\subsection{Level-2 addressee (A2)}
+
+A2 has the same structure as A1 but conditions on S2:
+\[
+  P_{A2}(g \mid u = \textsc{can}) \;\propto\; P(g \mid f_{\text{ctx}})\cdot P_{S2}(\textsc{can} \mid g, f_{\text{ctx}})
+\]
+A2's response is computed identically to A1's using the updated posterior.
+
+% ============================================================
+\section{Willingness Extension}
+% ============================================================
+\label{sec:willingness}
+
+\subsection{Motivation}
+
+The ability-only model collapses two distinct reasons not to act: \emph{can't}
+vs.\ \emph{won't}. Consider:
+\begin{itemize}
+  \item \emph{``Can you benchpress 150?''} --- low ability, high willingness
+  \item \emph{``Can you give me \$50?''} --- high ability, low willingness
+\end{itemize}
+Both have low compliance, but for different reasons. The willingness extension
+separates these dimensions, enabling a richer 2D context space.
+
+\subsection{New latent variables}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lll}
+\toprule
+\textbf{Variable} & \textbf{Range} & \textbf{Meaning} \\
+\midrule
+$\mu$ & $[0,1]$ & addressee's ability level \\
+$\theta$ & $[0,1]$ & ability threshold (``able'' iff $\mu > \theta$) \\
+$v$ & $[0,1]$ & addressee's willingness level \\
+$\phi$ & $[0,1]$ & willingness threshold (``willing'' iff $v > \phi$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ability prior is as before: $\mu \sim \mathrm{Beta}(f_{\text{ctx}}\cdot k,\, (1-f_{\text{ctx}})\cdot k)$.
+Willingness has the same structure: $v \sim \mathrm{Beta}(w_{\text{ctx}}\cdot k,\, (1-w_{\text{ctx}})\cdot k)$.
+
+\subsection{Changes to compliance and goal prior}
+
+\paragraph{Compliance.} Both ability \emph{and} willingness must exceed threshold:
+\[
+  \text{comply} = \mathbf{1}[\mu > \theta]\cdot\mathbf{1}[v > \phi]
+\]
+
+\paragraph{Goal prior.} Action goals presuppose \emph{both} ability and willingness:
+\[
+  P(g = \textsc{action} \mid f_{\text{ctx}}, w_{\text{ctx}}) = \tfrac{1}{2}\,f_{\text{ctx}}\cdot w_{\text{ctx}}
+\]
+This means the action goal is only likely when the addressee is both plausibly
+able \emph{and} plausibly willing.
+
+\subsection{Speaker utility (S1, willingness version)}
+
+\[
+  \mathrm{EU}_{S1}(u, g, \mu, \theta, v, \phi, f_{\text{ctx}}) =
+  \mathbf{1}[g{=}\textsc{action}]\cdot\mathbf{1}[u{=}\textsc{imp}]\cdot\mathbf{1}[\mu{>}\theta]\cdot\mathbf{1}[v{>}\phi]
+  + \mathbf{1}[g{=}\textsc{info}]\cdot\mathbf{1}[u{=}\textsc{can}]\cdot\mathrm{IG}(f_{\text{ctx}}, \theta)
+  - \delta\cdot\mathbf{1}[u{=}\textsc{imp}]
+\]
+
+S1 now marginalizes over four latent variables $(\mu, \theta, v, \phi)$:
+\[
+  P_{S1}(u \mid g, f_{\text{ctx}}, w_{\text{ctx}}) \;\propto\;
+  \exp\!\Bigl(\alpha\cdot
+    \mathbb{E}_{\mu,\theta,v,\phi}\!\bigl[\mathrm{EU}_{S1}(u, g, \mu, \theta, v, \phi, f_{\text{ctx}})\bigr]
+  \Bigr)
+\]
+
+\paragraph{Note on information gain.} IG still only depends on $f_{\text{ctx}}$ and
+$\theta$ (not on $v$ or $\phi$), because \textsc{can} is grammatically an
+ability question. Adding willingness changes the action payoff but not the
+literal semantics of the question.
+
+\subsection{A1, S2, A2 (willingness version)}
+
+The structure is identical to the ability-only model; only the definitions of
+comply and goal prior change. Goal inference via Bayes:
+\[
+  P_{A1}(g \mid u = \textsc{can}) \;\propto\; P(g \mid f_{\text{ctx}}, w_{\text{ctx}})\cdot P_{S1}(\textsc{can} \mid g, f_{\text{ctx}}, w_{\text{ctx}})
+\]
+
+Response utility uses the willingness-aware comply:
+\[
+  P_{A1}(\textsc{act} \mid \mu, \theta, v, \phi) =
+  \frac{\exp\!\bigl(\alpha\cdot\mathbf{1}[\mu{>}\theta]\cdot\mathbf{1}[v{>}\phi]\bigr)}
+       {\exp\!\bigl(\alpha\cdot\mathbf{1}[\mu{>}\theta]\cdot\mathbf{1}[v{>}\phi]\bigr) + \exp(\alpha\cdot(1-p_a))}
+\]
+
+Aggregate compliance now marginalizes over four dimensions:
+\[
+  P_{A1}(\textsc{act} \mid f_{\text{ctx}}, w_{\text{ctx}}) =
+  \mathbb{E}_{\mu, \theta, v, \phi}\!\left[P_{A1}(\textsc{act} \mid \mu, \theta, v, \phi)\right]
+\]
+
+\subsection{Test contexts}
+
+Sorted by $f_{\text{ctx}} \times w_{\text{ctx}}$ (the product governs goal prior):
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Context} & $f_{\text{ctx}}$ & $w_{\text{ctx}}$ & $f \times w$ \\
+\midrule
+Run a marathon   & 0.10 & 0.01 & 0.001 \\
+Benchpress 150   & 0.10 & 0.90 & 0.090 \\
+Give me \$50     & 0.80 & 0.20 & 0.160 \\
+Drive me home    & 0.70 & 0.80 & 0.560 \\
+Call me later    & 0.90 & 0.80 & 0.720 \\
+Pass the salt    & 0.99 & 0.99 & 0.980 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+These contexts reveal dissociations invisible to the ability-only model:
+\emph{``Run a marathon''} and \emph{``Benchpress 150''} have the same $f_{\text{ctx}} = 0.10$
+but differ dramatically in $w_{\text{ctx}}$, allowing the model to predict
+different levels of action inference and compliance even when ability is equally
+low.
+
+% ============================================================
+\section{Model Comparison}
+% ============================================================
+\label{sec:comparison}
+
+\subsection{What changes}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{lll}
+\toprule
+\textbf{Component} & \textbf{Ability-only} & \textbf{Willingness} \\
+\midrule
+Context params   & $f_{\text{ctx}}$ & $f_{\text{ctx}},\, w_{\text{ctx}}$ \\
+Latent variables & $\mu, \theta$ & $\mu, \theta, v, \phi$ \\
+Compliance       & $\mathbf{1}[\mu > \theta]$ & $\mathbf{1}[\mu > \theta]\cdot\mathbf{1}[v > \phi]$ \\
+Goal prior       & $\frac{1}{2}f_{\text{ctx}}$ & $\frac{1}{2}f_{\text{ctx}} w_{\text{ctx}}$ \\
+IG               & $\mathrm{IG}(f_{\text{ctx}}, \theta)$ & same \\
+S1 utility       & marginalize over $(\mu, \theta)$ & marginalize over $(\mu, \theta, v, \phi)$ \\
+A1 response      & marginalize over $(\mu, \theta)$ & marginalize over $(\mu, \theta, v, \phi)$ \\
+Number of params & 3 ($\alpha, \delta, k$) & 3 ($\alpha, \delta, k$; same values) \\
+Test contexts    & 4, ordered by $f$ & 6, ordered by $f \times w$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+No new free parameters are added in the willingness extension---willingness enters
+only through the context specification $(f_{\text{ctx}}, w_{\text{ctx}})$, which is
+set externally per context.
+
+\subsection{What stays the same}
+
+\begin{itemize}
+  \item Information gain: still $\mathrm{IG}(f_{\text{ctx}}, \theta)$---the question
+        is grammatically about ability regardless of model version.
+  \item RSA structure: S1 $\to$ A1 $\to$ S2 $\to$ A2 recursion is identical.
+  \item Social cost: $\delta = 0.7$ flat for \textsc{imp}.
+  \item Softmax rationality: $\alpha = 10$.
+  \item ``Acting entails yes'' response semantics.
+\end{itemize}
+
+\subsection{Key predictions and dissociations}
+
+\paragraph{Ability-only model.} Both \emph{``Benchpress 150''} and
+\emph{``Run a marathon''} have $f_{\text{ctx}} = 0.10$, so the model assigns
+them identical predictions. It cannot distinguish between ``I won't'' and
+``I can't.''
+
+\paragraph{Willingness model.} These contexts now diverge: \emph{``Benchpress 150''}
+($f{=}0.10, w{=}0.90$) has much higher $P(g{=}\textsc{action})$ than
+\emph{``Run a marathon''} ($f{=}0.10, w{=}0.01$), because asking about something
+the addressee is willing but unable to do still makes more pragmatic sense as a
+request than asking about something they're both unable and unwilling to do.
+
+Similarly, \emph{``Give me \$50''} ($f{=}0.80, w{=}0.20$) has moderate ability but
+low willingness: asking has informational value (the addressee is able but might
+not want to), so action inference is lower than \emph{``Drive me home''}
+($f{=}0.70, w{=}0.80$) despite similar ability.
+
+\paragraph{A2 amplification.} In both models, A2 infers action intent more
+strongly than A1 in high-$f_{\text{ctx}}$ (or high-$f_{\text{ctx}} w_{\text{ctx}}$)
+contexts. From the willingness notebook:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Context} & $f$ & $w$ & $P(g{=}a \mid A1)$ & $P(g{=}a \mid A2)$ & $P(\textsc{act} \mid A2)$ \\
+\midrule
+Run a marathon   & 0.10 & 0.01 & 0.000 & 0.000 & 0.001 \\
+Benchpress 150   & 0.10 & 0.90 & 0.031 & 0.039 & 0.055 \\
+Give me \$50     & 0.80 & 0.20 & 0.048 & 0.070 & 0.111 \\
+Drive me home    & 0.70 & 0.80 & 0.114 & 0.306 & 0.524 \\
+Call me later    & 0.90 & 0.80 & 0.131 & 0.441 & 0.696 \\
+Pass the salt    & 0.99 & 0.99 & 0.149 & 0.613 & 0.862 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The A2 amplification is largest in the high-$f \times w$ regime---where S2 has
+the most to gain from using \textsc{can} strategically.
+
+% ============================================================
+\section{The \texttt{memo} DSL}
+% ============================================================
+
+\subsection{Core syntax}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{ll}
+\toprule
+\textbf{Syntax} & \textbf{Meaning} \\
+\midrule
+\texttt{@memo} & marks function as probabilistic computation \\
+\texttt{[\,\_x: X,\,\ldots\,]} & indexed return dims (marginalized grid) \\
+\texttt{agent: knows(x)} & conditions on agent knowing $x$ \\
+\texttt{agent: given(x in X, wpp=...)} & prior over $x$ (wpp = ``with prob.\ proportional'') \\
+\texttt{agent: chooses(u in U, wpp=...)} & softmax choice \\
+\texttt{agent: observes\_that[cond]} & Bayesian update on observed event \\
+\texttt{agent: thinks[\,inner\,]} & agent models inner agent \\
+\texttt{Pr[cond]} & return marginal probability \\
+\texttt{EU[payoff]} & expected utility, marginalizing over uncertain vars \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{S1 (ability-only vs.\ willingness)}
+
+Ability-only (\texttt{whyask\_ability.ipynb}):
+\begin{verbatim}
+@memo
+def S1[_u: U, _g: goals](f_ctx, alpha):
+    speaker: knows(_g)
+    speaker: given(mu in mu_vals, wpp=f_prior(mu, f_ctx))
+    speaker: given(t in theta_vals, wpp=1)
+    speaker: wants(payoff = eu_s1(u, _g, mu, t, f_ctx))
+    speaker: chooses(u in U, wpp=exp(alpha * EU[payoff]))
+    return Pr[speaker.u == _u]
+\end{verbatim}
+
+Willingness extension (\texttt{whyask\_with\_willingness.ipynb}):
+\begin{verbatim}
+@memo
+def S1[_u: U, _g: goals](f_ctx, w_ctx, alpha):
+    speaker: knows(_g)
+    speaker: given(mu in mu_vals, wpp=f_prior(mu, f_ctx))
+    speaker: given(t in theta_vals, wpp=1)
+    speaker: given(v in v_vals, wpp=v_prior(v, w_ctx))   # <-- new
+    speaker: given(phi in phi_vals, wpp=1)                # <-- new
+    speaker: wants(payoff = eu_s1(u, _g, mu, t, v, phi, f_ctx))
+    speaker: chooses(u in U, wpp=exp(alpha * EU[payoff]))
+    return Pr[speaker.u == _u]
+\end{verbatim}
+
+The willingness version adds two \texttt{given} lines and passes $(v, \phi)$ to
+the utility function. The \texttt{memo} system handles marginalization over all
+four latent variables automatically.
+
+% ============================================================
+\section{Parameters}
+% ============================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lll}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Role} \\
+\midrule
+$\alpha$           & 10   & softmax rationality \\
+$\delta$           & 0.7  & face-threat cost of \textsc{imp} \\
+$k$                & 10   & Beta prior concentration for $\mu$ (and $v$) \\
+$c_{\text{can}}$   & 0.1 (notebook) / 0 (minimal) & question cost \\
+$f_{\text{ctx}}$   & varies & ability context (key input) \\
+$w_{\text{ctx}}$   & varies (willingness model only) & willingness context \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Same three free parameters ($\alpha, \delta, k$) in both versions.
+The willingness extension adds $w_{\text{ctx}}$ as a context specification, not
+a fit parameter.
+
+% ============================================================
+\section{Derivation Chain}
+% ============================================================
+
+\paragraph{Ability-only.}
+\[
+  f_{\text{ctx}}
+  \xrightarrow{\mathrm{Beta}}
+  \pi(\mu)
+  \xrightarrow{\mathrm{MI}}
+  \mathrm{IG}
+  \xrightarrow{\mathrm{EU}}
+  P_{S1}
+  \xrightarrow{\mathrm{Bayes}}
+  P_{A1}(g)
+  \xrightarrow{\mathrm{EU}}
+  P_{A1}(\textsc{act})
+  \xrightarrow{\mathrm{EU}}
+  P_{S2}
+  \xrightarrow{\mathrm{Bayes}}
+  P_{A2}(g)
+  \xrightarrow{\mathrm{EU}}
+  P_{A2}(\textsc{act})
+\]
+
+\paragraph{Willingness extension.} Same chain, but:
+\[
+  (f_{\text{ctx}}, w_{\text{ctx}})
+  \xrightarrow{\mathrm{Beta}\times\mathrm{Beta}}
+  \pi(\mu)\times\pi(v)
+  \;\longrightarrow\; \cdots
+\]
+IG still depends only on $\pi(\mu)$; the willingness prior $\pi(v)$ enters only
+through the comply term in the speaker and response utilities.
+
+% ============================================================
+\section{Comparison with Alternative Formulation (ke\_version)}
+% ============================================================
+\label{sec:ke}
+
+An alternative RSA formulation (\texttt{ke\_version.ipynb}) takes a substantially
+different approach. We describe its structure and give theoretical reasons to
+prefer the present model.
+
+\subsection{Structure of the alternative}
+
+\begin{itemize}
+  \item \textbf{Discrete world states}: ability $\times$ willingness are
+        binarized into four atomic worlds
+        $\{$able+willing, able+unwilling, unable+willing, unable+unwilling$\}$.
+  \item \textbf{No goal distinction in speaker}: the speaker always has an action
+        goal. Info-seeking intent ($\psi = \mathrm{info}$) is only considered
+        on the listener's side, not in the speaker's utility.
+  \item \textbf{Hardcoded info-utterance link}: $P(u{=}\textsc{can} \mid \psi{=}\mathrm{info}) = 1$
+        by stipulation.
+  \item \textbf{Extra free parameters}: $p_{\mathrm{intent}} = 0.5$ (prior
+        probability of request intent) and $\beta$ (conflict-aversion weight),
+        neither derived from the semantics.
+  \item \textbf{Only 3 levels}: L0 $\to$ S1 $\to$ L1. No S2/L2.
+  \item \textbf{No \textsc{null} utterance}: only \textsc{can} and \textsc{imp}.
+  \item \textbf{Conflict cost on listener}: declining \textsc{imp} incurs an
+        extra $c_{\mathrm{conflict}}$ penalty on the listener, meant to
+        represent a presupposition violation.
+\end{itemize}
+
+\subsection{Theoretical arguments for the present model}
+
+\paragraph{1. Information gain is derived, not stipulated.}
+In the ke formulation, the connection between \textsc{can} and information-seeking
+is asserted: $P(u{=}\textsc{can} \mid \psi{=}\mathrm{info}) = 1$ by fiat. The
+present model computes this connection from the literal semantics of \textsc{can}
+as an ability question: the informational utility of asking is the mutual
+information $\mathrm{IG}(f_{\mathrm{ctx}}, \theta)$ between the addressee's
+ability $\mu$ and the binary answer $\mathbf{1}[\mu > \theta]$. This is not
+assumed---it follows from what the question means. A consequence is that IG
+varies \emph{continuously and predictably} with context ($f_{\mathrm{ctx}}$): asking
+``can you benchpress 150?'' is genuinely informative; asking ``can you pass the
+salt?'' is nearly uninformative. The ke model cannot capture this gradient because
+the informational value of \textsc{can} is the same in all contexts by
+assumption.
+
+\paragraph{2. The goal prior is derived from a presupposition, not a free parameter.}
+The ke model sets $p_{\mathrm{intent}} = 0.5$ as a free parameter with no
+theoretical grounding. The present model derives the action-goal prior from the
+observation that action goals \emph{presuppose feasibility}---a speaker only
+wants you to do something if they believe you probably can and will. This gives:
+\[
+  P(g = \textsc{action} \mid f_{\mathrm{ctx}}) = \tfrac{1}{2}\,f_{\mathrm{ctx}}
+\]
+which is not a choice but a consequence of meaning. As a result, the model's
+context-sensitivity is an \emph{explanation}, not a description: the same
+utterance gets different goal inferences in different contexts because the prior
+itself changes with context, not because a dial was tuned.
+
+\paragraph{3. The ke model adds a free parameter ($\beta$) without explanatory gain.}
+The ke formulation introduces $\beta$, a weight on conflict aversion in S1's
+utility, with no grounding in linguistic or pragmatic theory. In the present
+model, the face-threat cost $\delta = 0.7$ is a fixed constant applied to
+\textsc{imp}---it reflects the speaker's cost of imposing, a well-motivated
+concept in politeness theory~\cite{brown1987politeness}. The ke model effectively
+adds a second dial ($\beta$) that scales an already-parameterized cost
+($c_{\mathrm{conflict}}$), which risks overfitting without adding theoretical
+content.
+
+\paragraph{4. Discrete world states cannot express graded ability.}
+By collapsing ability into a binary (able / not able), the ke model loses the
+distinction between ``barely able'' and ``reliably able.'' The threshold
+mechanism in the present model ($\mu > \theta$, marginalized over $\theta$)
+captures the intuition that ability is graded and that whether a threshold is
+exceeded depends on both the addressee's latent ability and the implicit
+standard being applied. This matters empirically: two contexts with the same
+nominal ``ability'' might differ in how \emph{certain} that ability is, which
+the continuous formulation handles naturally.
+
+\paragraph{5. The S2/A2 recursion captures strategic use of ``can you?''.}
+The ke model stops at L1. The present model's S2 level captures a genuine
+pragmatic phenomenon: a sophisticated speaker knows that asking ``can you pass
+the salt?'' will generate compliance (because A1 will infer action intent), so
+S2 \emph{strategically prefers} \textsc{can} over \textsc{imp} in
+high-feasibility contexts---getting the action without paying the face cost
+$\delta$. This is not just a modeling nicety; it predicts that indirect requests
+should be systematically preferred when compliance is near-certain. The ke model
+has no mechanism for this.
+
+\paragraph{6. Conflict cost is mislocated.}
+In ke, $c_{\mathrm{conflict}}$ penalizes the \emph{listener} for declining
+\textsc{imp}. But presupposition violation is a cost to the \emph{speaker}
+(they've made a false presupposition) or a reputational cost in the
+interaction---not a direct cost to the listener for responding truthfully. The
+present model places all social costs on the speaker ($\delta$ for \textsc{imp}),
+which is more consistent with standard treatments of face-threat and
+politeness~\cite{brown1987politeness}.
+
+\bigskip
+\begin{thebibliography}{9}
+\bibitem{frank2012predicting}
+Frank, M.\ C., \& Goodman, N.\ D.\ (2012).
+Predicting pragmatic reasoning in language games.
+\textit{Science}, 336(6084), 998.
+
+\bibitem{goodman2016pragmatic}
+Goodman, N.\ D., \& Frank, M.\ C.\ (2016).
+Pragmatic language interpretation as probabilistic inference.
+\textit{Trends in Cognitive Sciences}, 20(11), 818--829.
+
+\bibitem{brown1987politeness}
+Brown, P., \& Levinson, S.\ C.\ (1987).
+\textit{Politeness: Some universals in language usage}.
+Cambridge University Press.
+\end{thebibliography}
+
+\end{document}
