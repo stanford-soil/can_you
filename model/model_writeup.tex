@@ -72,20 +72,39 @@ implemented in JAX with the \texttt{memo} probabilistic DSL.
 \textsc{null} = silence. \textsc{info} goal = learn whether addressee can/will act;
 \textsc{action} goal = get them to do it.
 
+\subsection{Latent ability variables}
+
+Two continuous variables govern whether the addressee can comply:
+\begin{itemize}
+  \item $\mu \in [0,1]$: the addressee's latent ability level.
+  \item $\theta \in [0,1]$: the implicit threshold for counting as ``able.'' The addressee is able iff $\mu > \theta$.
+\end{itemize}
+
+Both are marginalized out in the final predictions (see Sections~\ref{sec:ability} and~\ref{sec:willingness}).
+The willingness extension adds two analogous variables $v$ (willingness level) and $\phi$ (willingness threshold).
+
 \subsection{Information gain}
 
 The literal semantics of \textsc{can} is: \emph{``Is $\mu > \theta$?''}---a
-binary question about ability. Its utility for an \textsc{info}-goal speaker
-is the mutual information between $\mu$ and the answer $Y = \mathbf{1}[\mu > \theta]$:
+binary question about ability. Let $Y = \mathbf{1}[\mu > \theta]$ be the binary
+answer (1 = able, 0 = not able). The utility of asking \textsc{can} for an
+\textsc{info}-goal speaker is the mutual information between $\mu$ and $Y$:
 \[
   \mathrm{IG}(f_{\text{ctx}}, \theta)
   = H\!\left[\pi(\mu)\right]
   - P(Y{=}1)\, H\!\left[\pi(\mu \mid Y{=}1)\right]
   - P(Y{=}0)\, H\!\left[\pi(\mu \mid Y{=}0)\right]
 \]
-where $\pi(\mu \mid f_{\text{ctx}})$ is a Beta prior (see below) and
-$H[\cdot]$ is Shannon entropy in nats. This function is identical in both model
-versions---\textsc{can} is always framed as an ability question grammatically.
+where $\pi(\mu) \equiv \pi(\mu \mid f_{\text{ctx}})$ is a Beta prior over ability
+(defined in Section~\ref{sec:ability}), $H[\cdot]$ is Shannon entropy in nats,
+and the posteriors are:
+\[
+  \pi(\mu \mid Y{=}1) \;\propto\; \pi(\mu)\cdot\mathbf{1}[\mu > \theta]
+  \qquad
+  \pi(\mu \mid Y{=}0) \;\propto\; \pi(\mu)\cdot\mathbf{1}[\mu \leq \theta]
+\]
+This function is identical in both model versions---\textsc{can} is always
+framed as an ability question grammatically.
 
 \textbf{Intuition:} When $f_{\text{ctx}} \approx 1$, the prior over $\mu$ is
 concentrated near 1; the answer is unsurprising---IG $\approx 0$. When
@@ -126,9 +145,7 @@ Both speakers and addressees choose via softmax with rationality $\alpha = 10$:
 
 \subsection{Setup additions}
 
-One latent variable for whether the addressee can act:
-$\mu \in [0,1]$ (ability level), $\theta \in [0,1]$ (threshold). Addressee is
-``able'' iff $\mu > \theta$.
+The latent variables $\mu$ and $\theta$ are as defined in Section~2.2.
 
 \paragraph{Feasibility prior.}
 \[
@@ -187,7 +204,7 @@ A1 observes $u = \textsc{can}$ and updates on S1's distribution:
   P_{A1}(g \mid u = \textsc{can}) \;\propto\; P(g \mid f_{\text{ctx}})\cdot P_{S1}(\textsc{can} \mid g, f_{\text{ctx}})
 \]
 
-Let $p_a = P_{A1}(g{=}\textsc{action} \mid u{=}\textsc{can})$. A1's response given $(\mu, \theta)$:
+Let $p_a \coloneqq P_{A1}(g{=}\textsc{action} \mid u{=}\textsc{can})$ denote the posterior probability that the speaker had an action goal. A1's response given known $(\mu, \theta)$:
 \[
   P_{A1}(\textsc{act} \mid \mu, \theta) =
   \frac{\exp(\alpha\cdot\mathbf{1}[\mu > \theta])}
@@ -304,7 +321,9 @@ comply and goal prior change. Goal inference via Bayes:
   P_{A1}(g \mid u = \textsc{can}) \;\propto\; P(g \mid f_{\text{ctx}}, w_{\text{ctx}})\cdot P_{S1}(\textsc{can} \mid g, f_{\text{ctx}}, w_{\text{ctx}})
 \]
 
-Response utility uses the willingness-aware comply:
+Response utility uses the willingness-aware comply. As before, let
+$p_a \coloneqq P_{A1}(g{=}\textsc{action} \mid u{=}\textsc{can})$ (now computed
+from the willingness-aware goal posterior above). Then:
 \[
   P_{A1}(\textsc{act} \mid \mu, \theta, v, \phi) =
   \frac{\exp\!\bigl(\alpha\cdot\mathbf{1}[\mu{>}\theta]\cdot\mathbf{1}[v{>}\phi]\bigr)}
@@ -402,15 +421,16 @@ low willingness: asking has informational value (the addressee is able but might
 not want to), so action inference is lower than \emph{``Drive me home''}
 ($f{=}0.70, w{=}0.80$) despite similar ability.
 
-\paragraph{A2 amplification.} In both models, A2 infers action intent more
-strongly than A1 in high-$f_{\text{ctx}}$ (or high-$f_{\text{ctx}} w_{\text{ctx}}$)
-contexts. From the willingness notebook:
+\paragraph{A2 amplification.} In both models, A2 infers action intent more strongly than A1 in
+high-$f_{\text{ctx}}$ (or high-$f_{\text{ctx}} w_{\text{ctx}}$) contexts
+(all quantities conditioned on observing $u = \textsc{can}$).
+From the willingness notebook:
 
 \begin{center}
 \renewcommand{\arraystretch}{1.2}
 \begin{tabular}{lccccc}
 \toprule
-\textbf{Context} & $f$ & $w$ & $P(g{=}a \mid A1)$ & $P(g{=}a \mid A2)$ & $P(\textsc{act} \mid A2)$ \\
+\textbf{Context} & $f$ & $w$ & $P(g{=}\textsc{action} \mid \textsc{can}, A1)$ & $P(g{=}\textsc{action} \mid \textsc{can}, A2)$ & $P(\textsc{act} \mid \textsc{can}, A2)$ \\
 \midrule
 Run a marathon   & 0.10 & 0.01 & 0.000 & 0.000 & 0.001 \\
 Benchpress 150   & 0.10 & 0.90 & 0.031 & 0.039 & 0.055 \\

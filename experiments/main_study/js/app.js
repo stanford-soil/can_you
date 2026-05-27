@@ -496,34 +496,31 @@ function PWelcome({ onNext }) {
   const turnstileRef = useRef(null);
   const widgetIdRef = useRef(null);
 
-  // Turnstile callbacks on window so Cloudflare can call them
+  // render Turnstile widget — poll until api.js is ready, then render w/ direct function refs
   useEffect(() => {
-    window.onTurnstileSuccess = (token) => {
-      if (participantRecord) participantRecord.turnstileToken = token;
-      logEvent('turnstile_passed');
-      setTurnstilePassed(true);
-    };
-    window.onTurnstileError = () => {
-      logEvent('turnstile_error');
-      setTurnstileError(true);
-    };
-    return () => {
-      delete window.onTurnstileSuccess;
-      delete window.onTurnstileError;
-    };
+    let pollTimer = null;
+    function tryRender() {
+      if (widgetIdRef.current) return; // already rendered
+      if (typeof window.turnstile !== 'undefined' && turnstileRef.current) {
+        widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
+          sitekey: '0x4AAAAAADGmnrY--98hEDoP',
+          callback: (token) => {
+            if (participantRecord) participantRecord.turnstileToken = token;
+            logEvent('turnstile_passed');
+            setTurnstilePassed(true);
+          },
+          'error-callback': () => {
+            logEvent('turnstile_error');
+            setTurnstileError(true);
+          },
+        });
+      } else {
+        pollTimer = setTimeout(tryRender, 100);
+      }
+    }
+    tryRender();
+    return () => { if (pollTimer) clearTimeout(pollTimer); };
   }, []);
-
-  // render Turnstile widget once container is mounted
-  useEffect(() => {
-    if (!turnstileRef.current) return;
-    if (typeof window.turnstile === 'undefined') return;
-    if (widgetIdRef.current) return;
-    widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
-      sitekey: '0x4AAAAAADGmnrY--98hEDoP',
-      callback: 'onTurnstileSuccess',
-      'error-callback': 'onTurnstileError',
-    });
-  });
 
   const canBegin = consented && turnstilePassed;
 
