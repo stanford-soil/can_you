@@ -52,7 +52,7 @@ def kde_trace(vals, axis, color, **kwargs):
 
 pio.renderers.default = 'notebook'
 
-PILOT       = 'c_pilot_prolific'
+PILOT       = 'd_plus_c_pilot_prolific'
 RESULTS_DIR = f'../../results/norming_study/{PILOT}'
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -68,8 +68,11 @@ C = {'joint-aw': '#1F5572', 'joint-wa': '#5C8FA8',
      'linear-aw': '#D69A57', 'linear-wa': '#A8A096'}
 C_AX  = {'aw': '#1F5572', 'wa': '#D69A57'}
 C_QUAD = {'AW': '#1F5572', 'ANW': '#5C8FA8', 'NAW': '#D69A57', 'NANW': '#A8A096'}
-BG, GRID_COL, PAD = '#F3EFE5', '#E8E2D5', 4
-AXIS_STYLE = dict(showgrid=True, gridcolor=GRID_COL, gridwidth=1,
+BG, GRID_COL, PAD = 'white', '#e5e5e5', 5
+SHOW_ITEM_MEANS = True
+JIT = 1.5  # jitter radius in units (0–100 scale)
+def jit(n): return np.random.uniform(-JIT, JIT, n)
+AXIS_STYLE = dict(showgrid=False, gridcolor=GRID_COL, gridwidth=1,
                   linecolor='#464548', linewidth=1, ticks='outside', tickcolor='#464548')
 def wrap(t, w=55): return '<br>'.join(textwrap.wrap(str(t), w))
 
@@ -109,6 +112,7 @@ def prep(df):
     return df
 
 trials = prep(pd.read_csv(f'../../data/norming_study/processed/{PILOT}/trials.csv'))
+# trials = trials[trials['axisOrder'] == 'AW'].copy()
 if FILTER_TO_STUDY_STIMULI:
     _study_ids = _load_study_ids()
     trials = trials[pd.to_numeric(trials['itemID'], errors='coerce').isin(_study_ids)].copy()
@@ -170,33 +174,35 @@ for ax, color in C_AX.items():
     fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name=ax,
         marker=dict(color=color, size=12, opacity=0.85),
         legendgroup=ax, showlegend=True), row=2, col=1)
-fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name='item mean',
-    marker=dict(color='#1a1a1a', size=12, opacity=0.85, line=dict(color='white', width=1.5)),
-    legendgroup='item mean', showlegend=True), row=2, col=1)
+if SHOW_ITEM_MEANS:
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name='item mean',
+        marker=dict(color='#1a1a1a', size=12, opacity=0.85, line=dict(color='white', width=1.5)),
+        legendgroup='item mean', showlegend=True), row=2, col=1)
 
 for ax, color in C_AX.items():
     g = trials[trials['axisOrder'] == ax.upper()]
     fig.add_trace(go.Scatter(
-        x=g['p_able'], y=g['p_willing'], mode='markers', name=ax,
+        x=g['p_able'] + jit(len(g)), y=g['p_willing'] + jit(len(g)), mode='markers', name=ax,
         marker=dict(color=color, size=4, opacity=0.45, line=dict(width=0)),
         customdata=np.stack([g['_v'], g['_q']], axis=1),
         hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>able: %{x}  willing: %{y}<extra></extra>',
         legendgroup=ax, showlegend=False,
     ), row=2, col=1)
 
-fig.add_trace(go.Scatter(
-    x=item_stats['p_able_m'], y=item_stats['p_willing_m'], mode='markers', name='item mean',
-    marker=dict(color='#1a1a1a', size=7, opacity=0.85, line=dict(color='white', width=1)),
-    error_x=dict(type='data', array=item_stats['p_able_se'],    visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
-    error_y=dict(type='data', array=item_stats['p_willing_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
-    customdata=np.stack([item_stats['_v'], item_stats['_q'], item_stats['n']], axis=1),
-    hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>P(able)=%{x:.1f}  P(willing)=%{y:.1f}  (n=%{customdata[2]})<extra></extra>',
-    legendgroup='item mean', showlegend=False,
-), row=2, col=1)
+if SHOW_ITEM_MEANS:
+    fig.add_trace(go.Scatter(
+        x=item_stats['p_able_m'], y=item_stats['p_willing_m'], mode='markers', name='item mean',
+        marker=dict(color='#1a1a1a', size=7, opacity=0.85, line=dict(color='white', width=1)),
+        error_x=dict(type='data', array=item_stats['p_able_se'],    visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+        error_y=dict(type='data', array=item_stats['p_willing_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+        customdata=np.stack([item_stats['_v'], item_stats['_q'], item_stats['n']], axis=1),
+        hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>P(able)=%{x:.1f}  P(willing)=%{y:.1f}  (n=%{customdata[2]})<extra></extra>',
+        legendgroup='item mean', showlegend=False,
+    ), row=2, col=1)
 
-fig.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
-    line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.25,
-    showlegend=False, hoverinfo='skip'), row=2, col=1)
+# fig.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
+#     line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.25,
+#     showlegend=False, hoverinfo='skip'), row=2, col=1)
 
 for ax, color in C_AX.items():
     g = trials[trials['axisOrder'] == ax.upper()]
@@ -219,9 +225,11 @@ fig.update_xaxes(range=[-PAD,100+PAD], title_text='P(able)',    **AXIS_STYLE, ro
 fig.update_yaxes(range=[-PAD,100+PAD], title_text='P(willing)', **AXIS_STYLE, row=2, col=1)
 fig.update_xaxes(showticklabels=False, showgrid=False, row=1, col=1)
 fig.update_yaxes(showticklabels=False, showgrid=False, row=2, col=2)
+fig.update_traces(cliponaxis=False, selector=dict(mode='markers'))
 fig.show()
 fig.write_html(f'{RESULTS_DIR}/fig1_scatter_marginals.html', include_plotlyjs='cdn')
 fig.write_image(f'{RESULTS_DIR}/fig1_scatter_marginals.png', scale=2)
+fig.write_image(f'{RESULTS_DIR}/fig1_scatter_marginals.pdf')
 ```
 
 ## Figure 1b — Primary × Conditional
@@ -262,9 +270,10 @@ for pi, ((sc, mc), (ax, conds, x_lbl, y_lbl)) in enumerate(zip(panel_cols, panel
             fig1b.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name=cond,
                 marker=dict(color=C.get(cond, '#888'), size=12, opacity=0.85),
                 legendgroup=cond, showlegend=True), row=2, col=sc)
-        fig1b.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name='item mean',
-            marker=dict(color='#1a1a1a', size=12, opacity=0.85, line=dict(color='white', width=1.5)),
-            legendgroup='item mean', showlegend=True), row=2, col=sc)
+        if SHOW_ITEM_MEANS:
+            fig1b.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name='item mean',
+                marker=dict(color='#1a1a1a', size=12, opacity=0.85, line=dict(color='white', width=1.5)),
+                legendgroup='item mean', showlegend=True), row=2, col=sc)
 
     for cond in conds:
         g = df[df['condition'] == cond]
@@ -284,22 +293,23 @@ for pi, ((sc, mc), (ax, conds, x_lbl, y_lbl)) in enumerate(zip(panel_cols, panel
     ]:
         if tr is not None: fig1b.add_trace(tr, row=row, col=col)
 
-    im = (df.groupby('itemID')
-          .agg(x_m=('x', 'mean'), x_sd=('x', 'std'), x_n=('x', 'count'),
-               y_m=('y', 'mean'), y_sd=('y', 'std'))
-          .reset_index())
-    im['x_se'] = im['x_sd'] / np.sqrt(im['x_n'])
-    im['y_se'] = im['y_sd'] / np.sqrt(im['x_n'])
-    fig1b.add_trace(go.Scatter(
-        x=im['x_m'], y=im['y_m'], mode='markers', name='item mean',
-        marker=dict(color='#1a1a1a', size=7, opacity=0.85, line=dict(color='white', width=1)),
-        error_x=dict(type='data', array=im['x_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
-        error_y=dict(type='data', array=im['y_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
-        legendgroup='item mean', showlegend=False, hoverinfo='skip',
-    ), row=2, col=sc)
-    fig1b.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
-        line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.25,
-        showlegend=False, hoverinfo='skip'), row=2, col=sc)
+    if SHOW_ITEM_MEANS:
+        im = (df.groupby('itemID')
+              .agg(x_m=('x', 'mean'), x_sd=('x', 'std'), x_n=('x', 'count'),
+                   y_m=('y', 'mean'), y_sd=('y', 'std'))
+              .reset_index())
+        im['x_se'] = im['x_sd'] / np.sqrt(im['x_n'])
+        im['y_se'] = im['y_sd'] / np.sqrt(im['x_n'])
+        fig1b.add_trace(go.Scatter(
+            x=im['x_m'], y=im['y_m'], mode='markers', name='item mean',
+            marker=dict(color='#1a1a1a', size=7, opacity=0.85, line=dict(color='white', width=1)),
+            error_x=dict(type='data', array=im['x_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+            error_y=dict(type='data', array=im['y_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+            legendgroup='item mean', showlegend=False, hoverinfo='skip',
+        ), row=2, col=sc)
+    # fig1b.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
+    #     line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.25,
+    #     showlegend=False, hoverinfo='skip'), row=2, col=sc)
 
     fig1b.update_xaxes(range=[-PAD,100+PAD], title_text=x_lbl, **AXIS_STYLE, row=2, col=sc)
     fig1b.update_yaxes(range=[-PAD,100+PAD], title_text=y_lbl, **AXIS_STYLE, row=2, col=sc)
@@ -315,9 +325,11 @@ fig1b.update_layout(
     legend=dict(orientation='h', yanchor='bottom', y=1.04, xanchor='left', x=0,
                 font=dict(size=15)),
 )
+fig1b.update_traces(cliponaxis=False, selector=dict(mode='markers'))
 fig1b.show()
 fig1b.write_html(f'{RESULTS_DIR}/fig1b_conditional_scatter.html', include_plotlyjs='cdn')
 fig1b.write_image(f'{RESULTS_DIR}/fig1b_conditional_scatter.png', scale=2)
+fig1b.write_image(f'{RESULTS_DIR}/fig1b_conditional_scatter.pdf')
 ```
 
 ## Item Table
