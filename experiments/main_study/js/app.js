@@ -1542,6 +1542,41 @@ function FullscreenOverlay({ onReenter }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Dev panel (test sessions only)
+// ─────────────────────────────────────────────────────────────
+const DEV_SCREENS = [
+  { idx: 0, label: 'Welcome / Consent' },
+  { idx: 1, label: 'Instructions' },
+  { idx: 2, label: 'Walkthrough' },
+  { idx: 3, label: 'Practice' },
+  { idx: 4, label: 'Comprehension' },
+  { idx: 5, label: 'Trials' },
+  { idx: 6, label: 'Reflection' },
+  { idx: 7, label: 'Demographics' },
+  { idx: 8, label: 'Completion' },
+];
+
+function DevPanel({ screenIdx, onJump }) {
+  const [selectedIdx, setSelectedIdx] = useState(screenIdx || 0);
+  return (
+    <div className="fm-dev-panel">
+      <span className="fm-dev-label">DEV</span>
+      <div className="fm-dev-divider" />
+      <select
+        className="fm-dev-select"
+        value={selectedIdx}
+        onChange={e => setSelectedIdx(Number(e.target.value))}
+      >
+        {DEV_SCREENS.map(s => (
+          <option key={s.idx} value={s.idx}>{s.idx}: {s.label}</option>
+        ))}
+      </select>
+      <button className="fm-dev-go" onClick={() => onJump(selectedIdx)}>Jump</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // App — main state machine
 // ─────────────────────────────────────────────────────────────
 function App() {
@@ -1737,6 +1772,14 @@ function App() {
     return <ResumeSplash onResume={handleResume} onStartOver={handleStartOver} />;
   }
 
+  const isTestSession = participantRecord && participantRecord.testSession;
+
+  function devJump(idx) {
+    setScreenIdx(idx);
+    if (idx === 5) setTrialIdx(1);
+    logEvent('dev_jump', { to: idx });
+  }
+
   return (
     <>
       {viewportLocked && screenIdx > 0 && <ViewportLockOverlay />}
@@ -1744,6 +1787,7 @@ function App() {
         <FullscreenOverlay onReenter={reenterFullscreen} />
       )}
       {renderScreen(screenIdx, trialIdx, next, back, halfwaySave)}
+      {isTestSession && <DevPanel screenIdx={screenIdx} onJump={devJump} />}
     </>
   );
 }

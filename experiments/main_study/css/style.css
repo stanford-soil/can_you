@@ -668,6 +668,68 @@
   margin-top: -10px;
 }
 
+/* ── Dev panel (test sessions only) ── */
+.fm-dev-panel {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1F1A14;
+  border-radius: 12px;
+  padding: 10px 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.28), 0 1px 3px rgba(0,0,0,0.12);
+}
+.fm-dev-label {
+  font-family: var(--c-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+}
+.fm-dev-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.12);
+  flex-shrink: 0;
+}
+.fm-dev-select {
+  font-family: var(--c-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.88);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 7px;
+  padding: 6px 10px;
+  outline: none;
+  cursor: pointer;
+  min-width: 190px;
+}
+.fm-dev-select option {
+  background: #2A2520;
+  color: #F0EDE8;
+}
+.fm-dev-go {
+  font-family: var(--c-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  background: var(--c-accent);
+  border: none;
+  border-radius: 7px;
+  padding: 7px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+.fm-dev-go:hover { opacity: 0.82; }
+.fm-dev-go:active { opacity: 0.65; }
+
 /* ── Infrastructure additions ── */
 
 /* viewport lock overlay */
