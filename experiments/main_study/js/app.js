@@ -721,31 +721,107 @@ function PInstructions({ onNext, onBack }) {
 // ─────────────────────────────────────────────────────────────
 // 03 · Walkthrough — animated typing demo
 // ─────────────────────────────────────────────────────────────
-const DEMO_ANS_1 = "i think they meant...";
-const DEMO_ANS_2 = "i would respond by...";
+
+// scripted typing actions: 'type' adds a char, 'del' removes one, 'pause' waits
+function buildTypingScript(text) {
+  return text.split('').map(ch => ({ action: 'type', ch }));
+}
+
+// GR answer scripts (goal first, then response)
+const DEMO_SCRIPT_GOAL = [
+  ...buildTypingScript("she wants me"),
+  { action: 'pause', ms: 800 },
+  ...buildTypingScript(" to"),
+  { action: 'pause', ms: 1400 },
+  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
+  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
+  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
+  { action: 'del' }, { action: 'del' }, { action: 'del' },
+  { action: 'pause', ms: 600 },
+  ...buildTypingScript("i think she literally just wants me to hand her the salt"),
+];
+
+const DEMO_SCRIPT_RESP = [
+  { action: 'pause', ms: 500 },
+  ...buildTypingScript("sure"),
+  { action: 'pause', ms: 700 },
+  ...buildTypingScript(", here you go"),
+];
 
 function PWalkthrough({ onNext, onBack }) {
-  const [phase, setPhase] = useState(0); // 0=typing ans1, 1=typing ans2, 2=done
+  const condition = participantRecord ? participantRecord.orderCondition : 'GR';
+  const isGR = condition === 'GR';
+  const script1 = isGR ? DEMO_SCRIPT_GOAL : DEMO_SCRIPT_RESP;
+  const script2 = isGR ? DEMO_SCRIPT_RESP : DEMO_SCRIPT_GOAL;
+  const box1Label = isGR ? 'what they meant by asking' : 'how you\'d respond';
+  const box2Label = isGR ? 'how you\'d respond' : 'what they meant by asking';
+
+  // phase: 0=waiting, 1=typing box1, 2=typing box2, 3=done
+  const [phase, setPhase] = useState(0);
   const [ans1, setAns1] = useState('');
   const [ans2, setAns2] = useState('');
+  const stepRef = useRef(0);
 
+  // initial 3s delay before typing starts
   useEffect(() => {
-    let timer;
-    if (phase === 0) {
-      if (ans1.length < DEMO_ANS_1.length) {
-        timer = setTimeout(() => setAns1(DEMO_ANS_1.slice(0, ans1.length + 1)), 35);
-      } else {
-        timer = setTimeout(() => setPhase(1), 600);
+    const t = setTimeout(() => setPhase(1), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // script runner for box 1
+  useEffect(() => {
+    if (phase !== 1) return;
+    let cancelled = false;
+    function tick() {
+      if (cancelled) return;
+      const idx = stepRef.current;
+      if (idx >= script1.length) {
+        // done w/ box 1 — pause then reveal box 2
+        setTimeout(() => { if (!cancelled) { stepRef.current = 0; setPhase(2); } }, 1200);
+        return;
       }
-    } else if (phase === 1) {
-      if (ans2.length < DEMO_ANS_2.length) {
-        timer = setTimeout(() => setAns2(DEMO_ANS_2.slice(0, ans2.length + 1)), 35);
-      } else {
-        timer = setTimeout(() => setPhase(2), 400);
+      const step = script1[idx];
+      stepRef.current = idx + 1;
+      if (step.action === 'pause') {
+        setTimeout(tick, step.ms);
+      } else if (step.action === 'type') {
+        setAns1(prev => prev + step.ch);
+        setTimeout(tick, 60 + Math.random() * 60);
+      } else if (step.action === 'del') {
+        setAns1(prev => prev.slice(0, -1));
+        setTimeout(tick, 40 + Math.random() * 30);
       }
     }
-    return () => clearTimeout(timer);
-  }, [phase, ans1, ans2]);
+    tick();
+    return () => { cancelled = true; };
+  }, [phase]);
+
+  // script runner for box 2
+  useEffect(() => {
+    if (phase !== 2) return;
+    let cancelled = false;
+    function tick() {
+      if (cancelled) return;
+      const idx = stepRef.current;
+      if (idx >= script2.length) {
+        setTimeout(() => { if (!cancelled) setPhase(3); }, 600);
+        return;
+      }
+      const step = script2[idx];
+      stepRef.current = idx + 1;
+      if (step.action === 'pause') {
+        setTimeout(tick, step.ms);
+      } else if (step.action === 'type') {
+        setAns2(prev => prev + step.ch);
+        setTimeout(tick, 60 + Math.random() * 60);
+      } else if (step.action === 'del') {
+        setAns2(prev => prev.slice(0, -1));
+        setTimeout(tick, 40 + Math.random() * 30);
+      }
+    }
+    tick();
+    return () => { cancelled = true; };
+  }, [phase]);
 
   function handleBack() {
     logEvent('back_button', { from: 'walkthrough', to: 'instructions' });
@@ -759,22 +835,26 @@ function PWalkthrough({ onNext, onBack }) {
         <h1 className="fm-title small">Here's what a trial looks like</h1>
         <div className="fm-demo">
           <p className="fm-demo-scenario">
-            A close friend desperately needs a haircut and can't get an
-            appointment in time. Not knowing who else to ask, they call you and say:
+            You're sitting at the dinner table with your family.
+            Your mom looks over at you and asks:
           </p>
-          <p className="fm-demo-utt">Can you give me a quick trim?</p>
-          <p className="fm-demo-q"><span className="num">01</span> what they meant by asking</p>
-          <div className={"fm-demo-ans" + (phase === 0 ? " typing" : "") + (!ans1 ? " empty" : "")}>
+          <p className="fm-demo-utt">"Can you pass the salt?"</p>
+          <p className="fm-demo-q"><span className="num">01</span> {box1Label}</p>
+          <div className={"fm-demo-ans" + (phase === 1 ? " typing" : "") + (phase < 1 ? " empty" : "")}>
             {ans1 || '…'}
           </div>
-          <p className="fm-demo-q"><span className="num">02</span> how you'd respond</p>
-          <div className={"fm-demo-ans" + (phase === 1 ? " typing" : "") + (!ans2 ? " empty" : "")}>
-            {ans2 || '…'}
-          </div>
+          {phase >= 2 && (
+            <>
+              <p className="fm-demo-q"><span className="num">02</span> {box2Label}</p>
+              <div className={"fm-demo-ans" + (phase === 2 ? " typing" : "") + (!ans2 ? " empty" : "")}>
+                {ans2 || '…'}
+              </div>
+            </>
+          )}
         </div>
         <div className="fm-foot">
           <button className="fm-btn ghost" onClick={handleBack}>← Back</button>
-          <button className="fm-btn" disabled={phase < 2} onClick={() => {
+          <button className="fm-btn" disabled={phase < 3} onClick={() => {
             if (participantRecord) participantRecord.timestamps.walkthroughDone = Date.now();
             onNext();
           }}>
