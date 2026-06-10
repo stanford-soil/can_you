@@ -2,28 +2,236 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Everyday Questions</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- Roundtable -->
-  <script src="https://cdn.roundtable.ai/v1/rt.js" data-site-key="pub-48FisoqXwMjI68knrdSp" data-tags="researcher:misha study:can-you-main project:can-you"></script>
-  <!-- Turnstile -->
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async></script>
-  <!-- React 18 via CDN -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel for JSX -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Stimuli -->
-  <script src="stimuli/stimuli_full_study.js"></script>
-  <!-- Styles -->
-  <link rel="stylesheet" href="css/style.css">
-  <style>html, body, #root { height: 100%; margin: 0; overflow: hidden; }</style>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+  <style>
+    :root {
+      --bg:       #F4F3EE;
+      --card:     #FFFFFF;
+      --ink:      #161B2E;
+      --muted:    #4A536B;
+      --faint:    #8A91A2;
+      --hairline: #E2E1DC;
+      --accent:   #2E4F8B;
+      --serif:    'DM Serif Display', Georgia, serif;
+      --sans:     'Schibsted Grotesk', system-ui, sans-serif;
+      --mono:     'JetBrains Mono', ui-monospace, monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      font-family: var(--sans);
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--hairline);
+      border-radius: 6px;
+      box-shadow: 0 1px 0 rgba(0,0,0,.02), 0 14px 50px rgba(16,18,30,.05);
+      padding: 44px 48px 40px;
+      max-width: 480px;
+      width: calc(100% - 32px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .overline {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-family: var(--serif);
+      font-size: 26px;
+      font-weight: 400;
+      letter-spacing: -.5px;
+      color: var(--ink);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .rule {
+      width: 32px;
+      height: 2px;
+      background: var(--hairline);
+      border-radius: 1px;
+      margin: 16px auto 20px;
+    }
+    .body-text {
+      font-size: 15px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.65;
+      margin-bottom: 28px;
+    }
+    .turnstile-wrap {
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    #captcha-proceed {
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 4px;
+      padding: 11px 22px;
+      cursor: pointer;
+      display: none;
+      box-shadow: 0 4px 14px rgba(46,79,139,.08);
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+    #captcha-proceed:hover { opacity: 0.88; transform: translateY(-1px); }
+    #captcha-proceed:active { transform: translateY(0); }
+    .loading-msg {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: var(--faint);
+      text-align: center;
+      margin-top: 8px;
+      min-height: 20px;
+    }
+  </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel" src="js/app.js"></script>
+  <div class="card">
+    <div class="overline">Social Interaction Lab · Stanford University</div>
+    <h1>Everyday Questions</h1>
+    <div class="rule"></div>
+    <p class="body-text">
+      Before we begin, please complete a quick security check
+    </p>
+    <div class="turnstile-wrap">
+      <div id="turnstile-widget"></div>
+    </div>
+    <button id="captcha-proceed">Continue →</button>
+    <p class="loading-msg" id="loading-msg"></p>
+  </div>
+
+  <script>
+    var TURNSTILE_SITE_KEY = '0x4AAAAAADGmnrY--98hEDoP';
+    var VERIFY_WORKER_URL  = 'https://can-you-verify.sll-stanford.workers.dev';
+
+    // ---- routing constants ----
+    var DATAPIPE_ID     = 'th9b0p1MhAHk';
+    var CONDITIONS      = ['GR', 'RG'];
+    var ASSIGNMENT_LIST = [1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+
+    function conditionToURL(condition, params) {
+      params.set('condition', condition);
+      return './study.html?' + params.toString();
+    }
+
+    async function doRouting() {
+      var msgEl = document.getElementById('loading-msg');
+      msgEl.textContent = 'Loading…';
+
+      var params = new URLSearchParams(window.location.search);
+      var pid    = params.get('PROLIFIC_PID') || 'no_pid';
+
+      // dev shortcut: ?condition=GR or ?condition=RG
+      var devCond = params.get('condition');
+      if (devCond && CONDITIONS.includes(devCond)) {
+        window.location.replace(conditionToURL(devCond, params));
+        return;
+      }
+
+      var condKey       = 'condition_' + DATAPIPE_ID + '_' + pid;
+      var idxKey        = 'assignment_idx_' + DATAPIPE_ID + '_' + pid;
+      var condition     = sessionStorage.getItem(condKey);
+      var assignmentIdx = sessionStorage.getItem(idxKey);
+
+      if (!condition) {
+        try {
+          var res = await fetch('https://pipe.jspsych.org/api/condition/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+            body: JSON.stringify({ experimentID: DATAPIPE_ID })
+          });
+          if (!res.ok) throw new Error('DataPipe returned ' + res.status);
+          var data = await res.json();
+          var idx  = data.condition;
+          if (idx < ASSIGNMENT_LIST.length) {
+            condition     = CONDITIONS[ASSIGNMENT_LIST[idx]];
+            assignmentIdx = String(idx);
+          } else {
+            condition     = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
+            assignmentIdx = 'rand';
+          }
+          sessionStorage.setItem(condKey, condition);
+          sessionStorage.setItem(idxKey, assignmentIdx);
+        } catch (err) {
+          console.warn('DataPipe routing failed, falling back to random:', err);
+          condition     = CONDITIONS[Math.floor(Math.random() * CONDITIONS.length)];
+          assignmentIdx = 'rand';
+          sessionStorage.setItem(condKey, condition);
+          sessionStorage.setItem(idxKey, assignmentIdx);
+        }
+      }
+
+      params.set('assignment_idx', assignmentIdx);
+      params.set('captcha_ok', captchaServerPass === true ? '1' : captchaServerPass === false ? '0' : 'err');
+      window.location.replace(conditionToURL(condition, params));
+    }
+
+    // ---- turnstile ----
+    var captchaVerified   = false;
+    var captchaServerPass = null;
+    var btn = document.getElementById('captcha-proceed');
+    var msg = document.getElementById('loading-msg');
+
+    var attempts = 0;
+    function tryRender() {
+      if (typeof turnstile !== 'undefined') {
+        turnstile.render('#turnstile-widget', {
+          sitekey: TURNSTILE_SITE_KEY,
+          callback: async function(token) {
+            try {
+              var res = await fetch(VERIFY_WORKER_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token }),
+              });
+              var data = await res.json();
+              captchaServerPass = data.success === true;
+            } catch (_) { captchaServerPass = null; }
+            captchaVerified = true;
+            btn.style.display = 'inline-block';
+          },
+          'error-callback': function() {
+            msg.innerHTML = '<span style="color:#B45A2E;">Verification error — try reloading the page.</span>';
+          }
+        });
+      } else if (attempts < 50) {
+        attempts++;
+        setTimeout(tryRender, 100);
+      } else {
+        msg.innerHTML = '<span style="color:#B45A2E;">Security check failed to load.<br>Please disable ad blockers and reload.</span>';
+      }
+    }
+    tryRender();
+
+    btn.addEventListener('click', function() {
+      if (!captchaVerified) return;
+      btn.disabled    = true;
+      btn.textContent = 'Loading…';
+      doRouting();
+    });
+  </script>
 </body>
 </html>

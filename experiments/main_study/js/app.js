@@ -96,7 +96,11 @@ function sampleStimuli(participantID, n = 30) {
 }
 
 function assignCondition(participantID) {
-  return (hashStr(participantID) % 2 === 0) ? 'AW' : 'WA';
+  // prefer condition from URL (set by index.html gateway via DataPipe)
+  const urlCond = new URLSearchParams(window.location.search).get('condition');
+  if (urlCond === 'GR' || urlCond === 'RG') return urlCond;
+  // fallback: hash-based (for dev/test sessions without gateway)
+  return (hashStr(participantID) % 2 === 0) ? 'GR' : 'RG';
 }
 
 // rebuild _stimuli cache from a saved stimuliShown itemID list
@@ -132,8 +136,10 @@ function getURLParams() {
   const prolificID = p.get('PROLIFIC_PID') || p.get('prolific_pid') || '';
   const sessionID = p.get('SESSION_ID') || p.get('session_id') || '';
   const studyID = p.get('STUDY_ID') || p.get('study_id') || '';
+  const assignmentIdx = p.get('assignment_idx') || '';
+  const captchaOk = p.get('captcha_ok') || '';
   const testSession = !prolificID && !sessionID;
-  return { prolificID, sessionID, studyID, testSession };
+  return { prolificID, sessionID, studyID, assignmentIdx, captchaOk, testSession };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -161,17 +167,106 @@ function checkEntry() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CSV helpers
+// ─────────────────────────────────────────────────────────────
+function csvEscape(val) {
+  if (val == null) return '';
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function toCSV(rows) {
+  if (!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const header = cols.map(csvEscape).join(',');
+  const lines = rows.map(row => cols.map(c => csvEscape(row[c])).join(','));
+  return [header, ...lines].join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────
+// Build CSV data from participant record
+// ─────────────────────────────────────────────────────────────
+function buildTrialsCSV(record) {
+  const meta = {
+    trial_type: 'trial',
+    participantID: record.participantID,
+    prolificID: record.prolificID,
+    prolificSessionID: record.prolificSessionID,
+    prolificStudyID: record.prolificStudyID,
+    assignmentIdx: record.assignmentIdx || '',
+    orderCondition: record.orderCondition,
+    testSession: record.testSession,
+    experimentName: record.experimentName,
+    version: record.version,
+  };
+  return record.trials.map(t => ({
+    ...meta,
+    itemID: t.itemID,
+    trialIdx: t.trialIdx,
+    scenario: t.scenario,
+    utterance: t.utterance,
+    interpretation: t.interpretation,
+    response: t.response,
+    order: t.order,
+    shownAtMs: t.shownAtMs,
+    submittedAtMs: t.submittedAtMs,
+    totalTimeMs: t.totalTimeMs,
+    timeToFirstInterpKeystrokeMs: t.timeToFirstInterpKeystrokeMs,
+    timeToFirstRespKeystrokeMs: t.timeToFirstRespKeystrokeMs,
+    interpKeystrokes: t.interpKeystrokes,
+    respKeystrokes: t.respKeystrokes,
+    interpRevisions: t.interpRevisions,
+    respRevisions: t.respRevisions,
+    box2RevealedAtMs: t.box2RevealedAtMs,
+    interpChars: t.characters ? t.characters.interp : '',
+    respChars: t.characters ? t.characters.resp : '',
+  }));
+}
+
+function buildDemographicsCSV(record) {
+  const row = {
+    trial_type: 'demographics',
+    participantID: record.participantID,
+    prolificID: record.prolificID,
+    prolificSessionID: record.prolificSessionID,
+    prolificStudyID: record.prolificStudyID,
+    assignmentIdx: record.assignmentIdx || '',
+    orderCondition: record.orderCondition,
+    testSession: record.testSession,
+    experimentName: record.experimentName,
+    version: record.version,
+    completionCode: record.completionCode,
+    age: record.demographics ? record.demographics.age : '',
+    gender: record.demographics ? record.demographics.gender : '',
+    nativeLanguage: record.demographics ? record.demographics.nativeLanguage : '',
+    education: record.demographics ? record.demographics.education : '',
+    reflectionApproach: record.reflection ? record.reflection.approach : '',
+    reflectionDistinguishing: record.reflection ? record.reflection.distinguishing : '',
+    comprehensionAttempts: record.comprehension ? record.comprehension.attempts : '',
+    comprehensionTimeMs: record.comprehension ? record.comprehension.timeToCorrectMs : '',
+    studyStartMs: record.timestamps.studyStart,
+    consentGivenMs: record.timestamps.consentGiven,
+    trialsStartMs: record.timestamps.trialsStart,
+    trialsDoneMs: record.timestamps.trialsDone,
+    studyCompleteMs: record.timestamps.studyComplete,
+    userAgent: record.browser ? record.browser.userAgent : '',
+    viewportWidth: record.browser ? record.browser.viewportWidth : '',
+    viewportHeight: record.browser ? record.browser.viewportHeight : '',
+  };
+  return [row];
+}
+
+// ─────────────────────────────────────────────────────────────
 // DataPipe upload w/ 3-retry exponential backoff
 // ─────────────────────────────────────────────────────────────
-async function uploadToDataPipe(payload, { partial = false } = {}) {
-  const filename = partial
-    ? `${payload.participantID}_partial_${Date.now()}.json`
-    : `${payload.participantID}_${Date.now()}.json`;
-
+async function sendCSVToDataPipe(filename, csvString) {
   const body = {
     experimentID: DATAPIPE_EXPERIMENT_ID,
     filename,
-    data: JSON.stringify(payload),
+    data: csvString,
   };
 
   const max = 3;
@@ -185,15 +280,42 @@ async function uploadToDataPipe(payload, { partial = false } = {}) {
       if (!res.ok) throw new Error(`status ${res.status}`);
       return await res.json();
     } catch (err) {
-      if (attempt === max - 1) {
-        localStorage.setItem(
-          `${LS_PREFIX}failed_upload_${Date.now()}`,
-          JSON.stringify({ filename, payload, error: err.message })
-        );
-        throw err;
-      }
+      if (attempt === max - 1) throw err;
       await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
     }
+  }
+}
+
+async function uploadToDataPipe(record, { partial = false } = {}) {
+  const pid = record.participantID;
+  const suffix = partial ? '_partial' : '';
+
+  const trialsCSV = toCSV(buildTrialsCSV(record));
+  const demoCSV = toCSV(buildDemographicsCSV(record));
+
+  const errors = [];
+
+  // upload trials CSV
+  try {
+    await sendCSVToDataPipe(`${pid}${suffix}_trials.csv`, trialsCSV);
+  } catch (err) {
+    errors.push({ file: 'trials', error: err.message });
+  }
+
+  // upload demographics CSV
+  try {
+    await sendCSVToDataPipe(`${pid}${suffix}_demographics.csv`, demoCSV);
+  } catch (err) {
+    errors.push({ file: 'demographics', error: err.message });
+  }
+
+  if (errors.length > 0) {
+    // save locally as fallback
+    localStorage.setItem(
+      `${LS_PREFIX}failed_upload_${Date.now()}`,
+      JSON.stringify({ pid, errors, trialsCSV, demoCSV })
+    );
+    if (errors.length === 2) throw new Error('Both uploads failed');
   }
 }
 
@@ -216,6 +338,8 @@ function initParticipantRecord(prolificID, sessionID, studyID, testSession) {
     prolificID: pid,
     prolificSessionID: sessionID || '',
     prolificStudyID: studyID || '',
+    assignmentIdx: urlParams.assignmentIdx || null,
+    captchaOk: urlParams.captchaOk || null,
     testSession: testSession || false,
     completionCode,
     orderCondition: condition,
@@ -339,7 +463,7 @@ class Boundary extends React.Component {
       return (
         <div className="fm-block-screen">
           <div className="fm-card" style={{ maxWidth: 600, textAlign: 'left' }}>
-            <p className="fm-eyebrow">— something went wrong —</p>
+            <p className="fm-eyebrow">something went wrong</p>
             <h1 className="fm-title small">We hit an unexpected error</h1>
             <p className="fm-body">
               Please refresh the page. If the issue persists, contact the researcher
@@ -380,7 +504,7 @@ function BlockScreen({ reason }) {
   return (
     <div className="fm-block-screen">
       <div className="fm-card" style={{ maxWidth: 560, textAlign: 'center' }}>
-        <p className="fm-eyebrow">— unable to continue —</p>
+        <p className="fm-eyebrow">unable to continue</p>
         <h1 className="fm-title small">{msg.title}</h1>
         <p className="fm-body">{msg.body}</p>
       </div>
@@ -396,14 +520,10 @@ function Shell({ screenIdx, trialIdx, trialTotal, posLabel, children }) {
   const sect = SECTIONS[sectionIdx];
   const trialLbl = (trialIdx != null && trialTotal != null)
     ? `trial ${String(trialIdx).padStart(2, '0')} / ${trialTotal}`
-    : (posLabel || '');
+    : '';
   return (
     <div className="fm">
-      <div className="fm-brand">
-        <span className="fm-brand-lab">Social Interaction Lab</span>
-        <span className="fm-brand-sep">·</span>
-        <span className="fm-brand-uni">Stanford University</span>
-      </div>
+      {/* brand strip removed — lab name now on consent eyebrow */}
       <header className="fm-top">
         <div className="fm-top-row">
           <span className="fm-top-section">
@@ -432,7 +552,7 @@ function ConsentModal({ onClose }) {
       <div className="fm-modal" onClick={e => e.stopPropagation()}>
         <button className="fm-modal-close" onClick={onClose}>×</button>
         <p style={{ fontFamily: 'var(--c-mono)', fontSize: 10, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--c-accent)', fontWeight: 700, margin: '0 0 14px' }}>
-          — informed consent —
+          informed consent
         </p>
         <h2 style={{ fontFamily: 'var(--c-serif)', fontSize: 26, fontWeight: 400, letterSpacing: '-.5px', margin: '0 0 18px', color: 'var(--c-ink)' }}>
           Everyday Questions
@@ -443,8 +563,8 @@ function ConsentModal({ onClose }) {
         <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--c-muted)', margin: '0 0 14px' }}>
           Thank you for your interest in our study. You are invited to take part in a research study
           about how people interpret everyday questions and situations. The study takes about
-          <strong style={{ color: 'var(--c-ink)' }}> ~X minutes</strong> and you will receive
-          <strong style={{ color: 'var(--c-ink)' }}> $X via Prolific</strong> for your participation.
+          <strong style={{ color: 'var(--c-ink)' }}> ~10 minutes</strong> and you will receive
+          <strong style={{ color: 'var(--c-ink)' }}> $2.50 via Prolific</strong> for your participation.
         </p>
         <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--c-muted)', margin: '0 0 14px' }}>
           <strong style={{ color: 'var(--c-ink)' }}>Voluntary participation.</strong> Your participation
@@ -453,7 +573,7 @@ function ConsentModal({ onClose }) {
         </p>
         <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--c-muted)', margin: '0 0 14px' }}>
           <strong style={{ color: 'var(--c-ink)' }}>Eligibility.</strong> You must be at least 18 years
-          old to participate and a native English speaker.
+          old to participate and a fluent English speaker.
         </p>
         <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--c-muted)', margin: '0 0 14px' }}>
           <strong style={{ color: 'var(--c-ink)' }}>Risks and benefits.</strong> There are no known risks
@@ -490,45 +610,15 @@ function ConsentModal({ onClose }) {
 // ─────────────────────────────────────────────────────────────
 function PWelcome({ onNext }) {
   const [consented, setConsented] = useState(false);
-  const [turnstilePassed, setTurnstilePassed] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
-  const [turnstileError, setTurnstileError] = useState(false);
-  const turnstileRef = useRef(null);
-  const widgetIdRef = useRef(null);
 
-  // render Turnstile widget — poll until api.js is ready, then render w/ direct function refs
-  useEffect(() => {
-    let pollTimer = null;
-    function tryRender() {
-      if (widgetIdRef.current) return; // already rendered
-      if (typeof window.turnstile !== 'undefined' && turnstileRef.current) {
-        widgetIdRef.current = window.turnstile.render(turnstileRef.current, {
-          sitekey: '0x4AAAAAADGmnrY--98hEDoP',
-          callback: (token) => {
-            if (participantRecord) participantRecord.turnstileToken = token;
-            logEvent('turnstile_passed');
-            setTurnstilePassed(true);
-          },
-          'error-callback': () => {
-            logEvent('turnstile_error');
-            setTurnstileError(true);
-          },
-        });
-      } else {
-        pollTimer = setTimeout(tryRender, 100);
-      }
-    }
-    tryRender();
-    return () => { if (pollTimer) clearTimeout(pollTimer); };
-  }, []);
-
-  const canBegin = consented && turnstilePassed;
+  // captcha already verified by gateway index.html
+  const canBegin = consented;
 
   function handleBegin() {
     if (!canBegin) return;
     if (participantRecord) participantRecord.timestamps.consentGiven = Date.now();
     logEvent('consent_given');
-    // request fullscreen after Turnstile succeeded
     (async () => {
       try {
         await document.documentElement.requestFullscreen();
@@ -540,10 +630,10 @@ function PWelcome({ onNext }) {
   }
 
   return (
-    <Shell screenIdx={0} posLabel="consent">
+    <Shell screenIdx={0}>
       {showConsent && <ConsentModal onClose={() => setShowConsent(false)} />}
       <div className="fm-card">
-        <p className="fm-eyebrow">— a short research study —</p>
+        <p className="fm-eyebrow">Social Interaction Lab · Stanford University</p>
         <h1 className="fm-title">Everyday Questions</h1>
         <p className="fm-body">
           You'll read short, everyday scenarios in which one person asks another a
@@ -552,29 +642,22 @@ function PWelcome({ onNext }) {
         </p>
         <p className="fm-body">
           We're studying how people interpret these questions in everyday situations.
-          There are no right or wrong answers — we just want your natural read.
+          There are no right or wrong answers; we just want your natural read.
         </p>
         <div className="fm-meta">
           <div className="fm-meta-block">
             <div className="fm-meta-k">Time</div>
-            <div className="fm-meta-v">About ~X min</div>
+            <div className="fm-meta-v">About 10 min</div>
           </div>
           <div className="fm-meta-block">
             <div className="fm-meta-k">Payment</div>
-            <div className="fm-meta-v">$X via Prolific</div>
+            <div className="fm-meta-v">$2.50 via Prolific</div>
           </div>
           <div className="fm-meta-block">
             <div className="fm-meta-k">Scenarios</div>
-            <div className="fm-meta-v">~X short items</div>
+            <div className="fm-meta-v">30 short items</div>
           </div>
         </div>
-        {/* Turnstile widget */}
-        <div ref={turnstileRef} style={{ marginBottom: 16 }} />
-        {turnstileError && (
-          <p style={{ fontSize: 13, color: 'var(--c-warn)', marginBottom: 12 }}>
-            Verification failed. Please refresh the page and try again.
-          </p>
-        )}
         <div
           className="fm-consent"
           onClick={() => setConsented(!consented)}
@@ -582,7 +665,7 @@ function PWelcome({ onNext }) {
         >
           <div className={"fm-consent-cb" + (consented ? " on" : "")} />
           <div className="fm-consent-text">
-            I am 18 or older, have read the consent form, and agree to participate.
+            I am 18 or older, am a fluent English speaker, have read the consent form, and agree to participate.
             I understand my responses will be stored anonymously and used for research purposes.
           </div>
         </div>
@@ -608,22 +691,20 @@ function PInstructions({ onNext, onBack }) {
     onBack();
   }
   return (
-    <Shell screenIdx={1} posLabel="how this works">
-      <div className="fm-card">
-        <p className="fm-eyebrow">— about this task —</p>
+    <Shell screenIdx={1}>
+      <div className="fm-card fm-card--centered">
+        <p className="fm-eyebrow">about this task</p>
         <h1 className="fm-title small">What "Can you…?" can mean</h1>
-        <p className="fm-body">
-          When someone asks <em>"Can you pass the salt?"</em>, they usually want
-          the salt. But <em>"Can you swim?"</em> might really be asking about your ability.
-          People mean different things by these questions depending on context.
+        <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both' }}>
+          Sometimes people ask a question because they want you to do it.
+          Sometimes they're interested in whether you can do it.
         </p>
-        <p className="fm-section-label">— for each scenario, you'll —</p>
-        <ul className="fm-list">
-          <li>Tell us what you took the question to mean</li>
-          <li>Tell us how you would respond to it</li>
-        </ul>
-        <p className="fm-body">
-          Answer in your own words — a sentence or two each. There's no right answer.
+        <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 650ms both' }}>
+          We're going to show you a bunch of everyday scenarios and ask
+          you to imagine which you think they are.
+        </p>
+        <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 1000ms both' }}>
+          For each one, tell us what you think they meant and what you would say or do.
         </p>
         <div className="fm-foot">
           <button className="fm-btn ghost" onClick={handleBack}>← Back</button>
@@ -640,8 +721,8 @@ function PInstructions({ onNext, onBack }) {
 // ─────────────────────────────────────────────────────────────
 // 03 · Walkthrough — animated typing demo
 // ─────────────────────────────────────────────────────────────
-const DEMO_ANS_1 = "they want me to actually cut their hair";
-const DEMO_ANS_2 = "yeah of course, come by tonight";
+const DEMO_ANS_1 = "i think they meant...";
+const DEMO_ANS_2 = "i would respond by...";
 
 function PWalkthrough({ onNext, onBack }) {
   const [phase, setPhase] = useState(0); // 0=typing ans1, 1=typing ans2, 2=done
@@ -672,9 +753,9 @@ function PWalkthrough({ onNext, onBack }) {
   }
 
   return (
-    <Shell screenIdx={2} posLabel="quick demo">
-      <div className="fm-card">
-        <p className="fm-eyebrow">— quick walkthrough —</p>
+    <Shell screenIdx={2}>
+      <div className="fm-card fm-card--centered">
+        <p className="fm-eyebrow">quick walkthrough</p>
         <h1 className="fm-title small">Here's what a trial looks like</h1>
         <div className="fm-demo">
           <p className="fm-demo-scenario">
@@ -711,7 +792,7 @@ function PWalkthrough({ onNext, onBack }) {
 function TrialForm({
   scenario, utterance, onSubmit,
   submitLabel = 'Continue →', footHint, isPractice = false,
-  condition = 'AW', // AW: interp=box01, resp=box02; WA: resp=box01, interp=box02
+  condition = 'GR', // GR: goal(interp)=box01, respond=box02; RG: respond=box01, goal(interp)=box02
   onIdleReset,      // call this on any keystroke so parent can reset idle timer
 }) {
   const [box1Val, setBox1Val] = useState('');
@@ -726,18 +807,18 @@ function TrialForm({
   const box2Keystrokes = useRef(0);
   const box2RevealedAt = useRef(null);
 
-  const isAW = condition === 'AW';
-  const box1Prompt = isAW ? 'what they meant by asking' : 'how you\'d respond';
-  const box2Prompt = isAW ? 'how you\'d respond' : 'what they meant by asking';
-  const box1Placeholder = isAW ? 'A sentence or two…' : 'What you\'d say, or do…';
-  const box2Placeholder = isAW ? 'What you\'d say, or do…' : 'A sentence or two…';
+  const isGR = condition === 'GR';
+  const box1Prompt = isGR ? 'what they meant by asking' : 'how you\'d respond';
+  const box2Prompt = isGR ? 'how you\'d respond' : 'what they meant by asking';
+  const box1Placeholder = isGR ? 'A sentence or two…' : 'What you\'d say or do…';
+  const box2Placeholder = isGR ? 'What you\'d say or do…' : 'A sentence or two…';
 
   const ready = box1Val.trim().length > 0 && box2Val.trim().length > 0;
 
   // slide in box 02 after 700ms pause in box 01
   useEffect(() => {
     if (box2Visible) return;
-    if (box1Val.trim().length < 3) return;
+    if (box1Val.trim().length < 1) return;
     const t = setTimeout(() => {
       setBox2Visible(true);
       box2RevealedAt.current = Date.now();
@@ -767,12 +848,12 @@ function TrialForm({
 
   function handleSubmit() {
     const submittedAtMs = Date.now();
-    const interpVal = isAW ? box1Val : box2Val;
-    const respVal = isAW ? box2Val : box1Val;
-    const interpFirstKeystroke = isAW ? box1FirstKeystroke.current : box2FirstKeystroke.current;
-    const respFirstKeystroke = isAW ? box2FirstKeystroke.current : box1FirstKeystroke.current;
-    const interpKs = isAW ? box1Keystrokes.current : box2Keystrokes.current;
-    const respKs = isAW ? box2Keystrokes.current : box1Keystrokes.current;
+    const interpVal = isGR ? box1Val : box2Val;
+    const respVal = isGR ? box2Val : box1Val;
+    const interpFirstKeystroke = isGR ? box1FirstKeystroke.current : box2FirstKeystroke.current;
+    const respFirstKeystroke = isGR ? box2FirstKeystroke.current : box1FirstKeystroke.current;
+    const interpKs = isGR ? box1Keystrokes.current : box2Keystrokes.current;
+    const respKs = isGR ? box2Keystrokes.current : box1Keystrokes.current;
 
     onSubmit({
       interp: interpVal,
@@ -793,7 +874,7 @@ function TrialForm({
 
   return (
     <div className="fm-card">
-      {isPractice && <span className="fm-practice-tag">practice — not recorded</span>}
+      {isPractice && <span className="fm-practice-tag">practice · not recorded</span>}
       <p className="fm-scenario">{scenario}</p>
       <p className="fm-utt">{utterance}</p>
 
@@ -836,13 +917,13 @@ function TrialForm({
 // 04 · Practice trial
 // ─────────────────────────────────────────────────────────────
 function PPractice({ onNext, onBack }) {
-  const condition = participantRecord ? participantRecord.orderCondition : 'AW';
+  const condition = participantRecord ? participantRecord.orderCondition : 'GR';
   function handleBack() {
     logEvent('back_button', { from: 'practice', to: 'walkthrough' });
     onBack();
   }
   return (
-    <Shell screenIdx={3} posLabel="practice">
+    <Shell screenIdx={3}>
       <TrialForm
         isPractice
         scenario="You're at a friend's apartment helping them pack. The boxes are stacked near the door. They turn to you and say:"
@@ -864,15 +945,29 @@ function PPractice({ onNext, onBack }) {
 function PComprehension({ onNext, onBack }) {
   const [pick, setPick] = useState(null);
   const startTimeRef = useRef(Date.now());
-  const correct = pick === 0;
+  const condition = participantRecord ? participantRecord.orderCondition : 'GR';
+  const isGR = condition === 'GR';
+  // correct answer depends on condition: GR → first box is goal/interpretation (idx 0), RG → first box is response (idx 1)
+  const correctIdx = isGR ? 0 : 1;
+  const correct = pick === correctIdx;
+
+  const options = isGR
+    ? [
+        { i: 0, text: 'what they meant by asking the question' },
+        { i: 1, text: 'what I would say or do in response' },
+      ]
+    : [
+        { i: 0, text: 'what they meant by asking the question' },
+        { i: 1, text: 'what I would say or do in response' },
+      ];
 
   function handlePick(i) {
     setPick(i);
     if (participantRecord) {
       participantRecord.comprehension.attempts++;
-      if (i !== 0) {
+      if (i !== correctIdx) {
         participantRecord.comprehension.wrongPicks.push(i);
-        logEvent('comprehension_wrong', { pickedIdx: i });
+        logEvent('comprehension_wrong', { pickedIdx: i, condition });
       }
     }
   }
@@ -892,22 +987,22 @@ function PComprehension({ onNext, onBack }) {
     onBack();
   }
 
+  const firstBoxLabel = isGR ? 'your interpretation of what they meant' : 'how you\'d respond';
+  const secondBoxLabel = isGR ? 'how you\'d respond' : 'your interpretation of what they meant';
+
   return (
-    <Shell screenIdx={4} posLabel="quick check">
+    <Shell screenIdx={4}>
       <div className="fm-card">
-        <p className="fm-eyebrow">— quick check —</p>
+        <p className="fm-eyebrow">quick check</p>
         <h1 className="fm-title small">Just to make sure</h1>
         <p className="fm-body">
-          When someone asks <em>"Can you give me a quick trim?"</em> —
+          When someone asks <em>"Can you give me a quick trim?"</em>,
           which response goes in the <strong>first</strong> box?
         </p>
         <div className="fm-radio-group">
-          {[
-            { i: 0, text: 'what they meant by asking the question' },
-            { i: 1, text: 'what I would say or do in response' },
-          ].map((opt) => {
+          {options.map((opt) => {
             const sel = pick === opt.i;
-            const state = sel ? (opt.i === 0 ? 'correct' : 'wrong') : '';
+            const state = sel ? (opt.i === correctIdx ? 'correct' : 'wrong') : '';
             return (
               <div
                 key={opt.i}
@@ -921,15 +1016,15 @@ function PComprehension({ onNext, onBack }) {
             );
           })}
         </div>
-        {pick === 1 && (
+        {pick !== null && !correct && (
           <p className="fm-body fine" style={{ color: 'var(--c-warn)', fontStyle: 'italic' }}>
-            Not quite — the first box is for your interpretation of what they meant.
-            The second is for how you'd respond. Pick the other option.
+            Not quite: the first box is for {firstBoxLabel}.
+            The second is for {secondBoxLabel}. Pick the other option.
           </p>
         )}
-        {pick === 0 && (
+        {correct && (
           <p className="fm-body fine" style={{ color: 'var(--c-success)', fontStyle: 'italic' }}>
-            Right — what they meant by asking goes in the first box, how you'd respond goes in the second.
+            Exactly: {firstBoxLabel} goes in the first box, {secondBoxLabel} goes in the second.
           </p>
         )}
         <div className="fm-foot">
@@ -971,7 +1066,7 @@ function PTrial({ trialIdx, onNext, onHalfwaySave }) {
   const idleTimerRef = useRef(null);
 
   const stimuli = participantRecord ? participantRecord._stimuli : [];
-  const condition = participantRecord ? participantRecord.orderCondition : 'AW';
+  const condition = participantRecord ? participantRecord.orderCondition : 'GR';
   const t = stimuli[trialIdx - 1] || {};
   // stimuli file uses vignette + actionPhrase
   const scenario = t.vignette || t.scenario || '';
@@ -1068,9 +1163,9 @@ function PStrategy({ onNext }) {
   const [a2, setA2] = useState('');
   const ready = a1.trim().length > 0 && a2.trim().length > 0;
   return (
-    <Shell screenIdx={6} posLabel="reflection">
+    <Shell screenIdx={6}>
       <div className="fm-card">
-        <p className="fm-eyebrow">— almost done —</p>
+        <p className="fm-eyebrow">almost done</p>
         <h1 className="fm-title small">Two quick reflections</h1>
         <div className="fm-q">
           <p className="fm-q-prompt"><span className="fm-q-num">01</span> how did you decide what people meant by their questions?</p>
@@ -1081,7 +1176,7 @@ function PStrategy({ onNext }) {
           />
         </div>
         <div className="fm-q">
-          <p className="fm-q-prompt"><span className="fm-q-num">02</span> how did you tell apart questions about ability vs. requests for action?</p>
+          <p className="fm-q-prompt"><span className="fm-q-num">02</span> how did you tell apart questions about whether someone can do something vs. wanting them to do it?</p>
           <textarea
             className={"fm-ta" + (a2 ? " filled" : "")}
             value={a2} onChange={e => setA2(e.target.value)}
@@ -1145,14 +1240,14 @@ function PDemographics({ onNext }) {
   if (uploadFailed) {
     const pid = participantRecord ? participantRecord.participantID : 'unknown';
     return (
-      <Shell screenIdx={7} posLabel="about you">
+      <Shell screenIdx={7} >
         <div className="fm-card">
-          <p className="fm-eyebrow">— almost there —</p>
+          <p className="fm-eyebrow">almost there</p>
           <h1 className="fm-title small">Your data is saved locally</h1>
           <p className="fm-body">
             Your responses were collected but couldn't be sent to our server right now.
             Please email <a href={`mailto:${RESEARCHER_EMAIL}`}>{RESEARCHER_EMAIL}</a> with
-            the ID below — your data is preserved and we'll process it manually.
+            the ID below. Your data is preserved and we'll process it manually.
           </p>
           <div className="fm-code">{pid}</div>
           <div className="fm-foot">
@@ -1165,12 +1260,12 @@ function PDemographics({ onNext }) {
   }
 
   return (
-    <Shell screenIdx={7} posLabel="about you">
+    <Shell screenIdx={7} >
       <div className="fm-card">
-        <p className="fm-eyebrow">— one more thing —</p>
+        <p className="fm-eyebrow">one more thing</p>
         <h1 className="fm-title small">A bit about you</h1>
         <p className="fm-body fine" style={{ marginBottom: 22 }}>
-          Optional, but helpful for analyzing the data. All responses remain anonymous.
+          Helpful for analyzing the data. All responses remain anonymous.
         </p>
         <div className="fm-field">
           <label className="fm-field-lbl">Age</label>
@@ -1233,16 +1328,16 @@ function PCompletion() {
   }, [countdown]);
 
   return (
-    <Shell screenIdx={8} posLabel="complete">
+    <Shell screenIdx={8}>
       <div className="fm-card">
         <div className="fm-success-badge" />
-        <p className="fm-eyebrow">— study complete —</p>
+        <p className="fm-eyebrow">study complete</p>
         <h1 className="fm-title">Thank you</h1>
         <p className="fm-body">
           Your responses have been recorded. The data you provided will help
           us understand how people interpret everyday requests.
         </p>
-        <p className="fm-section-label">— your completion code —</p>
+        <p className="fm-section-label">your completion code</p>
         <div className="fm-code">{code}</div>
         <p className="fm-body fine">
           Copy this code into Prolific to receive your payment. If you have
@@ -1268,7 +1363,7 @@ function ResumeSplash({ onResume, onStartOver }) {
   return (
     <div className="fm-resume-overlay">
       <div className="fm-card" style={{ maxWidth: 560, textAlign: 'center' }}>
-        <p className="fm-eyebrow">— welcome back —</p>
+        <p className="fm-eyebrow">welcome back</p>
         <h1 className="fm-title small">Continue where you left off?</h1>
         <p className="fm-body">You started this study earlier. We saved your progress.</p>
         <div className="fm-foot" style={{ justifyContent: 'center', gap: 16 }}>
@@ -1287,7 +1382,7 @@ function ViewportLockOverlay() {
   return (
     <div className="fm-block-overlay">
       <div className="fm-card" style={{ maxWidth: 480, textAlign: 'center' }}>
-        <p className="fm-eyebrow">— please resize your window —</p>
+        <p className="fm-eyebrow">please resize your window</p>
         <h1 className="fm-title small">Your browser is too small</h1>
         <p className="fm-body">
           Please make your window at least 1024 × 600 pixels.
