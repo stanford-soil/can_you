@@ -138,8 +138,9 @@ function getURLParams() {
   const studyID = p.get('STUDY_ID') || p.get('study_id') || '';
   const assignmentIdx = p.get('assignment_idx') || '';
   const captchaOk = p.get('captcha_ok') || '';
+  const pidOverride = p.get('PID') || p.get('pid') || '';
   const testSession = !prolificID && !sessionID;
-  return { prolificID, sessionID, studyID, assignmentIdx, captchaOk, testSession };
+  return { prolificID, sessionID, studyID, assignmentIdx, captchaOk, pidOverride, testSession };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -337,7 +338,7 @@ function initParticipantRecord(prolificID, sessionID, studyID, testSession) {
   participantRecord = {
     experimentName: 'whyask_main',
     version: '1.0.0',
-    participantID: generateUUID(),
+    participantID: urlParams.pidOverride || generateUUID(),
     prolificID: pid,
     prolificSessionID: sessionID || '',
     prolificStudyID: studyID || '',
