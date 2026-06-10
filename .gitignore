@@ -7,3 +7,4 @@ data/
 experiments/norming_study/config/
 experiments/norming_study/sandbox/
 worker/
+tests/
