@@ -254,8 +254,8 @@
 .fm-consent-cb.on::after {
   content: "";
   position: absolute;
-  left: 4px; top: 7px;
-  width: 4px; height: 7px;
+  left: 5px; top: 1px;
+  width: 5px; height: 9px;
   border: solid white;
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);

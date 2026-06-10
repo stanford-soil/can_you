@@ -637,7 +637,7 @@ function PWelcome({ onNext }) {
         <h1 className="fm-title">Everyday Questions</h1>
         <p className="fm-body">
           You'll read short, everyday scenarios in which one person asks another a
-          question like <em>"Can you give me a quick trim?"</em>. After each scenario,
+          question like <em>"Can you pass the salt?"</em>. After each scenario,
           we'll ask what you think the speaker meant and how you'd respond.
         </p>
         <p className="fm-body">
@@ -665,7 +665,7 @@ function PWelcome({ onNext }) {
         >
           <div className={"fm-consent-cb" + (consented ? " on" : "")} />
           <div className="fm-consent-text">
-            I am 18 or older, am a fluent English speaker, have read the consent form, and agree to participate.
+            I am 18 years or older, have read the consent form, and agree to participate.
             I understand my responses will be stored anonymously and used for research purposes.
           </div>
         </div>
