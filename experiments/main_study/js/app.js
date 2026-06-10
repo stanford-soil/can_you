@@ -292,7 +292,7 @@ async function uploadToDataPipe(record, { partial = false } = {}) {
   const suffix = partial ? '_partial' : '';
 
   const trialsCSV = toCSV(buildTrialsCSV(record));
-  const demoCSV = toCSV(buildDemographicsCSV(record));
+  const demoCSV = partial ? null : toCSV(buildDemographicsCSV(record));
 
   const errors = [];
 
@@ -303,11 +303,13 @@ async function uploadToDataPipe(record, { partial = false } = {}) {
     errors.push({ file: 'trials', error: err.message });
   }
 
-  // upload demographics CSV
-  try {
-    await sendCSVToDataPipe(`${pid}${suffix}_demographics.csv`, demoCSV);
-  } catch (err) {
-    errors.push({ file: 'demographics', error: err.message });
+  // upload demographics CSV (final submit only)
+  if (demoCSV) {
+    try {
+      await sendCSVToDataPipe(`${pid}_demographics.csv`, demoCSV);
+    } catch (err) {
+      errors.push({ file: 'demographics', error: err.message });
+    }
   }
 
   if (errors.length > 0) {
@@ -316,7 +318,7 @@ async function uploadToDataPipe(record, { partial = false } = {}) {
       `${LS_PREFIX}failed_upload_${Date.now()}`,
       JSON.stringify({ pid, errors, trialsCSV, demoCSV })
     );
-    if (errors.length === 2) throw new Error('Both uploads failed');
+    if (errors.length === (demoCSV ? 2 : 1)) throw new Error('Upload failed');
   }
 }
 
@@ -564,8 +566,8 @@ function ConsentModal({ onClose }) {
         <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--c-muted)', margin: '0 0 14px' }}>
           Thank you for your interest in our study. You are invited to take part in a research study
           about how people interpret everyday questions and situations. The study takes about
-          <strong style={{ color: 'var(--c-ink)' }}> ~10 minutes</strong> and you will receive
-          <strong style={{ color: 'var(--c-ink)' }}> $2.50 via Prolific</strong> for your participation.
+          <strong style={{ color: 'var(--c-ink)' }}> ~15 minutes</strong> and you will receive
+          <strong style={{ color: 'var(--c-ink)' }}> $3.75 via Prolific</strong> for your participation.
         </p>
         <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--c-muted)', margin: '0 0 14px' }}>
           <strong style={{ color: 'var(--c-ink)' }}>Voluntary participation.</strong> Your participation
@@ -648,11 +650,11 @@ function PWelcome({ onNext }) {
         <div className="fm-meta">
           <div className="fm-meta-block">
             <div className="fm-meta-k">Time</div>
-            <div className="fm-meta-v">About 10 min</div>
+            <div className="fm-meta-v">About 15 min</div>
           </div>
           <div className="fm-meta-block">
             <div className="fm-meta-k">Payment</div>
-            <div className="fm-meta-v">$2.50 via Prolific</div>
+            <div className="fm-meta-v">$3.75 via Prolific</div>
           </div>
           <div className="fm-meta-block">
             <div className="fm-meta-k">Scenarios</div>
@@ -1334,7 +1336,7 @@ function PDemographics({ onNext }) {
   const [saving, setSaving] = useState(false);
   const [uploadFailed, setUploadFailed] = useState(false);
 
-  const ready = age.trim() && lang.trim() && edu.trim();
+  const ready = true; // all fields optional
 
   async function handleSubmit() {
     if (!ready || saving) return;
@@ -1390,7 +1392,7 @@ function PDemographics({ onNext }) {
         <p className="fm-eyebrow">one more thing</p>
         <h1 className="fm-title small">A bit about you</h1>
         <p className="fm-body fine" style={{ marginBottom: 22 }}>
-          Helpful for analyzing the data. All responses remain anonymous.
+          Optional, but helpful and welcome! All responses remain anonymous.
         </p>
         <div className="fm-field">
           <label className="fm-field-lbl">Age</label>
@@ -1425,7 +1427,7 @@ function PDemographics({ onNext }) {
           />
         </div>
         <div className="fm-foot">
-          <span className="fm-foot-hint">{ready ? 'ready to submit' : 'required fields needed'}</span>
+          <span className="fm-foot-hint">all fields optional</span>
           <button className="fm-btn" disabled={!ready || saving} onClick={handleSubmit}>
             {saving ? 'Saving…' : 'Submit →'}
           </button>

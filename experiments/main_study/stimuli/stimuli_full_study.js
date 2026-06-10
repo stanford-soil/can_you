@@ -241,8 +241,8 @@ var STIMULI_DATA = {
     // --- ability: med | willingness: low ---
     {
       "itemID": 49,
-      "actionPhrase": "give say some words about ",
-      "vignette": "You are at a large company event disussing the new product launch. Your manager suddenly puts you on the spot and says:"
+      "actionPhrase": "say a few words about the new product",
+      "vignette": "You are at a large company event discussing the new product launch. Your manager suddenly puts you on the spot and says:"
     },
 
     {
@@ -605,8 +605,8 @@ var STIMULI_DATA = {
 
     {
       "itemID": 123,
-      "actionPhrase": "break the car window to get that child out",
-      "vignette": "You are in a parking lot when you notice a toddler alone in a hot car, clearly distressed. The windows are up and you cannot find the owner. A bystander looks at you and says:"
+      "actionPhrase": "break the car window to get that dog out",
+      "vignette": "You are in a parking lot when you notice a dog alone in a hot car. The windows are up and you cannot find the owner. A bystander looks at you and says:"
     },
 
     {
