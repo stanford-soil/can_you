@@ -1,0 +1,585 @@
+---
+title: "Norming Study — Pilot"
+date: today
+format:
+  html:
+    theme: cosmo
+    page-layout: full
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    embed-resources: true
+    smooth-scroll: true
+    fig-responsive: true
+    grid:
+      sidebar-width: 220px
+      body-width: 1400px
+      margin-width: 0px
+execute:
+  echo: false
+  warning: false
+  message: false
+jupyter: python3
+---
+
+```{python}
+#| label: setup
+import pandas as pd, numpy as np, os, textwrap
+import plotly.graph_objects as go
+import plotly.io as pio
+from plotly.subplots import make_subplots
+from IPython.display import display, HTML
+from scipy.stats import gaussian_kde
+
+_KX = np.linspace(0, 100, 300)
+
+def hex_rgba(h, a=0.35):
+    r, g, b = int(h[1:3],16), int(h[3:5],16), int(h[5:7],16)
+    return f'rgba({r},{g},{b},{a})'
+
+def kde_trace(vals, axis, color, **kwargs):
+    """KDE scatter trace; axis='x' → top margin, axis='y' → side margin."""
+    if len(vals) < 2: return None
+    ky = gaussian_kde(vals, bw_method='scott')(_KX)
+    if axis == 'x':
+        return go.Scatter(x=_KX, y=ky, mode='lines', fill='tozeroy',
+            line=dict(color=color, width=1.5), fillcolor=hex_rgba(color),
+            hoverinfo='skip', **kwargs)
+    else:
+        return go.Scatter(x=ky, y=_KX, mode='lines', fill='tozerox',
+            line=dict(color=color, width=1.5), fillcolor=hex_rgba(color),
+            hoverinfo='skip', **kwargs)
+
+pio.renderers.default = 'notebook'
+
+PILOT       = 'd_plus_c_pilot_prolific'
+RESULTS_DIR = f'../../results/norming_study/{PILOT}'
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+# set to True to filter trials to the 100-item full study set
+FILTER_TO_STUDY_STIMULI = False
+
+import re as _re
+def _load_study_ids(path='../../experiments/norming_study/stimuli/stimuli_full_study.js'):
+    with open(path) as f: js = f.read()
+    return set(int(x) for x in _re.findall(r'"itemID":\s*(\d+)', js))
+
+C = {'joint-aw': '#1F5572', 'joint-wa': '#5C8FA8',
+     'linear-aw': '#D69A57', 'linear-wa': '#A8A096'}
+C_AX  = {'aw': '#1F5572', 'wa': '#D69A57'}
+C_QUAD = {'AW': '#1F5572', 'ANW': '#5C8FA8', 'NAW': '#D69A57', 'NANW': '#A8A096'}
+BG, GRID_COL, PAD = 'white', '#e5e5e5', 5
+SHOW_ITEM_MEANS = False
+JIT = 1.5  # jitter radius in units (0–100 scale)
+def jit(n): return np.random.uniform(-JIT, JIT, n)
+AXIS_STYLE = dict(showgrid=False, gridcolor=GRID_COL, gridwidth=1,
+                  linecolor='#464548', linewidth=1, ticks='outside', tickcolor='#464548')
+def wrap(t, w=55): return '<br>'.join(textwrap.wrap(str(t), w))
+
+def prep(df):
+    df = df.copy()
+    is_grid = df['trial_type'] == 'whyask-grid-trial'
+    df['condition'] = (df['trial_type']
+                       .map({'whyask-grid-trial': 'joint', 'whyask-linear-trial': 'linear'})
+                       + '-' + df['axisOrder'].str.lower())
+    df['p_able']    = df['abilityResponse'].astype(float)
+    df['p_willing'] = df['willingnessResponse'].astype(float)
+    if is_grid.any():
+        df.loc[is_grid, 'p_able']    = (df.loc[is_grid, 'able_willing_count']
+                                         + df.loc[is_grid, 'able_not_willing_count'])
+        df.loc[is_grid, 'p_willing'] = (df.loc[is_grid, 'able_willing_count']
+                                         + df.loc[is_grid, 'not_able_willing_count'])
+    for col in ['dof1', 'dof2_giv', 'dof2_gnot']:
+        df[col] = np.nan
+    df['dof1_lbl'] = ''; df['dof2_lbl'] = ''; df['dof2n_lbl'] = ''
+    for ax, d1, d2g, d2n in [
+        ('AW', 'P(able)',    'P(willing|able)',   'P(willing|¬able)'),
+        ('WA', 'P(willing)', 'P(able|willing)',   'P(able|¬willing)'),
+    ]:
+        m = is_grid & (df['axisOrder'] == ax)
+        if m.any():
+            df.loc[m, 'dof1']      = df.loc[m, 'sx']  / 10 * 100
+            df.loc[m, 'dof2_giv']  = df.loc[m, 'syR'] / 10 * 100
+            df.loc[m, 'dof2_gnot'] = df.loc[m, 'syL'] / 10 * 100
+            df.loc[m, 'dof1_lbl']  = d1
+            df.loc[m, 'dof2_lbl']  = d2g
+            df.loc[m, 'dof2n_lbl'] = d2n
+    df['_q'] = df['actionPhrase'].apply(lambda t: wrap(f'Can you {t}?'))
+    if 'vignette' in df.columns:
+        df['_v'] = df['vignette'].apply(wrap)
+    else:
+        df['_v'] = df['_q']
+    return df
+
+trials = prep(pd.read_csv(f'../../data/norming_study/processed/{PILOT}/trials.csv'))
+# trials = trials[trials['axisOrder'] == 'AW'].copy()
+if FILTER_TO_STUDY_STIMULI:
+    _study_ids = _load_study_ids()
+    trials = trials[pd.to_numeric(trials['itemID'], errors='coerce').isin(_study_ids)].copy()
+    print(f'[filtered to study stimuli: {trials["itemID"].nunique()} items]')
+aw_m = trials[trials['axisOrder'] == 'AW']
+wa_m = trials[trials['axisOrder'] == 'WA']
+```
+
+## Overview
+
+```{python}
+print(f'subjects: {trials["subjectID"].nunique()}  |  trials: {len(trials)}')
+print()
+print('n_trials by condition:')
+print(trials.groupby('condition').size().to_string())
+print()
+print('unique items per condition:')
+print(trials.groupby('condition')['itemID'].nunique().to_string())
+print()
+rt = trials['trialRT'] / 1000
+print(f'trial RT: median={rt.median():.1f}s  IQR={rt.quantile(.25):.1f}–{rt.quantile(.75):.1f}s  max={rt.max():.1f}s')
+```
+
+## Probability Estimates
+
+```{python}
+joint = trials[trials['trial_type'] == 'whyask-grid-trial']
+
+print(f"P(able):    {trials['p_able'].mean():.1f}")
+print(f"P(willing): {trials['p_willing'].mean():.1f}")
+
+if len(joint):
+    print()
+    print(f"P(AW):   {joint['able_willing_count'].mean():.1f}")
+    print(f"P(ANW):  {joint['able_not_willing_count'].mean():.1f}")
+    print(f"P(NAW):  {joint['not_able_willing_count'].mean():.1f}")
+    print(f"P(NANW): {joint['not_able_not_willing_count'].mean():.1f}")
+```
+
+## Figure 1 — P(able) × P(willing)
+
+```{python}
+item_stats = (trials.groupby('itemID')
+              .agg(p_able_m=('p_able', 'mean'), p_able_sd=('p_able', 'std'),
+                   p_willing_m=('p_willing', 'mean'), p_willing_sd=('p_willing', 'std'),
+                   n=('subjectID', 'nunique'), phrase=('actionPhrase', 'first'),
+                   _v=('_v', 'first'), _q=('_q', 'first'))
+              .reset_index())
+item_stats['p_able_se']    = item_stats['p_able_sd']    / np.sqrt(item_stats['n'])
+item_stats['p_willing_se'] = item_stats['p_willing_sd'] / np.sqrt(item_stats['n'])
+
+fig = make_subplots(rows=2, cols=2,
+    column_widths=[0.8, 0.2], row_heights=[0.2, 0.8],
+    shared_xaxes=True, shared_yaxes=True,
+    horizontal_spacing=0.02, vertical_spacing=0.02)
+
+# legend-only dummy traces (big markers for visibility)
+for ax, color in C_AX.items():
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name=ax,
+        marker=dict(color=color, size=12, opacity=0.85),
+        legendgroup=ax, showlegend=True), row=2, col=1)
+if SHOW_ITEM_MEANS:
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name='item mean',
+        marker=dict(color='#1a1a1a', size=12, opacity=0.85, line=dict(color='white', width=1.5)),
+        legendgroup='item mean', showlegend=True), row=2, col=1)
+
+for ax, color in C_AX.items():
+    g = trials[trials['axisOrder'] == ax.upper()]
+    fig.add_trace(go.Scatter(
+        x=g['p_able'] + jit(len(g)), y=g['p_willing'] + jit(len(g)), mode='markers', name=ax,
+        marker=dict(color=color, size=4, opacity=0.45, line=dict(width=0)),
+        customdata=np.stack([g['_v'], g['_q']], axis=1),
+        hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>able: %{x}  willing: %{y}<extra></extra>',
+        legendgroup=ax, showlegend=False,
+    ), row=2, col=1)
+
+if SHOW_ITEM_MEANS:
+    fig.add_trace(go.Scatter(
+        x=item_stats['p_able_m'], y=item_stats['p_willing_m'], mode='markers', name='item mean',
+        marker=dict(color='#1a1a1a', size=7, opacity=0.85, line=dict(color='white', width=1)),
+        error_x=dict(type='data', array=item_stats['p_able_se'],    visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+        error_y=dict(type='data', array=item_stats['p_willing_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+        customdata=np.stack([item_stats['_v'], item_stats['_q'], item_stats['n']], axis=1),
+        hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>P(able)=%{x:.1f}  P(willing)=%{y:.1f}  (n=%{customdata[2]})<extra></extra>',
+        legendgroup='item mean', showlegend=False,
+    ), row=2, col=1)
+
+# fig.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
+#     line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.25,
+#     showlegend=False, hoverinfo='skip'), row=2, col=1)
+
+for ax, color in C_AX.items():
+    g = trials[trials['axisOrder'] == ax.upper()]
+    for tr, row, col in [
+        (kde_trace(g['p_able'].dropna().values,    'x', color, showlegend=False), 1, 1),
+        (kde_trace(g['p_willing'].dropna().values, 'y', color, showlegend=False), 2, 2),
+    ]:
+        if tr is not None: fig.add_trace(tr, row=row, col=col)
+
+fig.update_layout(
+    width=560, height=560, plot_bgcolor=BG, paper_bgcolor='white',
+    margin=dict(l=60, r=20, t=20, b=60),
+    font=dict(family='Avenir, Helvetica Neue, Arial'),
+    hoverlabel=dict(bgcolor='rgba(255,255,255,0.45)', bordercolor='#464548',
+                    font=dict(family='Avenir, Helvetica Neue, Arial', size=13, color='#222'), namelength=0),
+    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0,
+                font=dict(size=15)),
+)
+fig.update_xaxes(range=[-PAD,100+PAD], title_text='P(able)',    **AXIS_STYLE, row=2, col=1)
+fig.update_yaxes(range=[-PAD,100+PAD], title_text='P(willing)', **AXIS_STYLE, row=2, col=1)
+fig.update_xaxes(showticklabels=False, showgrid=False, row=1, col=1)
+fig.update_yaxes(showticklabels=False, showgrid=False, row=2, col=2)
+fig.update_traces(cliponaxis=False, selector=dict(mode='markers'))
+fig.show()
+fig.write_html(f'{RESULTS_DIR}/fig1_scatter_marginals.html', include_plotlyjs='cdn')
+fig.write_image(f'{RESULTS_DIR}/fig1_scatter_marginals.png', scale=2)
+fig.write_image(f'{RESULTS_DIR}/fig1_scatter_marginals.pdf')
+```
+
+## Figure 1 — Lab Meeting: P(comply) heatmaps
+
+```{python}
+# Za from whyask_ability.ipynb (true 1D model → perfect columns)
+# Zf from whyask_with_willingness.ipynb (2D model)
+# Run respective grid cells first if .npz files are missing.
+
+import matplotlib.pyplot as _plt
+import matplotlib.colors as _mcolors
+
+_GRID_A = '../../results/model/whyask/fig1lm_grid_ability.npz'
+_GRID_F = '../../results/model/whyask/fig1lm_grid.npz'
+
+if not os.path.exists(_GRID_A) or not os.path.exists(_GRID_F):
+    print('grid(s) not found — run grid cells in whyask_ability.ipynb and whyask_with_willingness.ipynb first')
+else:
+    _da = np.load(_GRID_A)
+    _df = np.load(_GRID_F)
+    _Za, _FG, _WG = _da['Za'], _da['fg'], _da['wg']
+    _Zf = _df['Zf']
+
+    # highlighted points: (label, f, w, dx_pt, dy_pt, ha, va)
+    _ANN = [
+        ('run a marathon',                          0.10,  0.10,   8,   7, 'left',  'bottom'),
+        ('benchpress 225',                          0.10,  0.90,   8,  -5, 'left',  'top'   ),
+        ('can you slackline?',                      0.231, 0.372,  8,   5, 'left',  'bottom'),
+        ('can you cover for me\ntomorrow morning?', 0.407, 0.247,  8,  -5, 'left',  'top'   ),
+        ('call my landlord\nto complain?',          0.732, 0.420,  8,   5, 'left',  'bottom'),
+        ('give me $50?',                            0.80,  0.20,   8,  -5, 'left',  'top'   ),
+        ("who's looking\nfor another job?",         0.838, 0.261, -8,   8, 'right', 'bottom'),
+        ('drive me home',                           0.70,  0.80,  -8,   5, 'right', 'bottom'),
+        ('pass the salt',                           0.95,  0.95,  -8,  -5, 'right', 'top'   ),
+    ]
+
+    # warm (low compliance) → cool (high compliance): two distinct color families
+    _CMAP = _mcolors.LinearSegmentedColormap.from_list('comply',
+        ['#FFFDE0', '#FFAB40', '#2471A3', '#0D2B5E'])
+    # iso-compliance contour levels
+    _LEVELS = [0.2, 0.4, 0.6, 0.8]
+    _FONT = 'Avenir'
+
+    _fig, _axes = _plt.subplots(1, 2, figsize=(11, 4.2), sharey=True, layout='constrained')
+
+    for _ax, _Z, _title in zip(_axes, [_Za, _Zf], ['Ability only', 'Ability + willingness']):
+        _im = _ax.pcolormesh(_FG, _WG, _Z, cmap=_CMAP, vmin=0, vmax=1, shading='gouraud')
+
+        # iso-compliance lines (vertical for ability-only; arcs for full model)
+        _ax.contour(_FG, _WG, _Z, levels=_LEVELS,
+                    colors='white', linewidths=0.75, alpha=0.55)
+
+        # all norming study data points at low opacity (p_able/p_willing 0–100 → 0–1)
+        _ax.scatter(trials['p_able'] / 100, trials['p_willing'] / 100,
+                    s=8, color='white', alpha=0.25, linewidths=0, zorder=3)
+
+        # highlighted points + annotations
+        for (_lbl, _f, _w, _dx, _dy, _ha, _va) in _ANN:
+            _ax.scatter(_f, _w, s=50, color='white', edgecolors='#1F5572',
+                        linewidths=1.5, zorder=5, clip_on=False)
+            _ax.annotate(_lbl, xy=(_f, _w), xytext=(_dx, _dy),
+                         textcoords='offset points', fontsize=8, fontfamily=_FONT,
+                         ha=_ha, va=_va, color='#111', zorder=6, clip_on=False,
+                         bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none', alpha=0.72))
+
+        _ax.set_title(_title, fontfamily=_FONT, fontsize=11, pad=8, fontweight='normal')
+        _ax.set_xlabel('P(able)', fontfamily=_FONT, fontsize=10)
+        _ax.set_xlim(_FG[0], _FG[-1])
+        _ax.set_ylim(_WG[0], _WG[-1])
+        _ax.set_xticks([0.2, 0.4, 0.6, 0.8])
+        _ax.set_yticks([0.2, 0.4, 0.6, 0.8])
+        _ax.set_facecolor('white')
+        _ax.grid(False)
+        _ax.spines['top'].set_visible(False)
+        _ax.spines['right'].set_visible(False)
+        _ax.tick_params(labelsize=9, length=3)
+
+    _axes[0].set_ylabel('P(willing)', fontfamily=_FONT, fontsize=10)
+    _cb = _plt.colorbar(_im, ax=_axes[1], shrink=0.92, pad=0.03, aspect=25)
+    _cb.set_label('P(comply | "can you?")', fontfamily=_FONT, fontsize=9)
+    _cb.ax.tick_params(labelsize=8)
+    _cb.outline.set_visible(False)
+
+    _plt.savefig(f'{RESULTS_DIR}/norming_fig1_labmtg_heatmap.png', dpi=150, bbox_inches='tight')
+    _plt.savefig(f'{RESULTS_DIR}/norming_fig1_labmtg_heatmap.pdf', bbox_inches='tight')
+    _plt.show()
+```
+
+## Figure 1b — Primary × Conditional
+
+```{python}
+panels = [
+    ('aw', ['joint-aw', 'linear-aw'], 'P(able)', 'P(willing|able)'),
+    ('wa', ['joint-wa', 'linear-wa'], 'P(willing)', 'P(able|willing)'),
+]
+
+def panel_data(conds):
+    rows = []
+    for cond in [c for c in conds if c in trials['condition'].unique()]:
+        g = trials[trials['condition'] == cond].copy()
+        if 'joint' in cond:
+            g['x'], g['y'] = g['dof1'], g['dof2_giv']
+        elif cond == 'linear-aw':
+            g['x'], g['y'] = g['p_able'], g['p_willing']
+        else:
+            g['x'], g['y'] = g['p_willing'], g['p_able']
+        rows.append(g[['_v', '_q', 'x', 'y', 'condition', 'itemID']])
+    return pd.concat(rows) if rows else pd.DataFrame()
+
+fig1b = make_subplots(rows=2, cols=5,
+    column_widths=[0.37, 0.07, 0.08, 0.37, 0.07],
+    row_heights=[0.15, 0.85],
+    horizontal_spacing=0.02, vertical_spacing=0.02)
+
+panel_cols = [(1, 2), (4, 5)]
+
+for pi, ((sc, mc), (ax, conds, x_lbl, y_lbl)) in enumerate(zip(panel_cols, panels)):
+    df = panel_data(conds)
+    if df.empty: continue
+
+    # legend-only dummy traces (big markers, first panel only)
+    if pi == 0:
+        for cond in conds:
+            fig1b.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name=cond,
+                marker=dict(color=C.get(cond, '#888'), size=12, opacity=0.85),
+                legendgroup=cond, showlegend=True), row=2, col=sc)
+        if SHOW_ITEM_MEANS:
+            fig1b.add_trace(go.Scatter(x=[None], y=[None], mode='markers', name='item mean',
+                marker=dict(color='#1a1a1a', size=12, opacity=0.85, line=dict(color='white', width=1.5)),
+                legendgroup='item mean', showlegend=True), row=2, col=sc)
+
+    for cond in conds:
+        g = df[df['condition'] == cond]
+        if g.empty: continue
+        color = C.get(cond, '#888')
+        fig1b.add_trace(go.Scatter(
+            x=g['x'], y=g['y'], mode='markers', name=cond,
+            marker=dict(color=color, size=4, opacity=0.45, line=dict(width=0)),
+            customdata=np.stack([g['_v'], g['_q']], axis=1),
+            hovertemplate='<b>%{customdata[0]}</b><br>%{customdata[1]}<br>x=%{x:.1f}  y=%{y:.1f}<extra></extra>',
+            legendgroup=cond, showlegend=False,
+        ), row=2, col=sc)
+    ax_color = C_AX[ax]
+    for tr, row, col in [
+        (kde_trace(df['x'].dropna().values, 'x', ax_color, showlegend=False), 1, sc),
+        (kde_trace(df['y'].dropna().values, 'y', ax_color, showlegend=False), 2, mc),
+    ]:
+        if tr is not None: fig1b.add_trace(tr, row=row, col=col)
+
+    if SHOW_ITEM_MEANS:
+        im = (df.groupby('itemID')
+              .agg(x_m=('x', 'mean'), x_sd=('x', 'std'), x_n=('x', 'count'),
+                   y_m=('y', 'mean'), y_sd=('y', 'std'))
+              .reset_index())
+        im['x_se'] = im['x_sd'] / np.sqrt(im['x_n'])
+        im['y_se'] = im['y_sd'] / np.sqrt(im['x_n'])
+        fig1b.add_trace(go.Scatter(
+            x=im['x_m'], y=im['y_m'], mode='markers', name='item mean',
+            marker=dict(color='#1a1a1a', size=7, opacity=0.85, line=dict(color='white', width=1)),
+            error_x=dict(type='data', array=im['x_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+            error_y=dict(type='data', array=im['y_se'], visible=True, color='rgba(26,26,26,0.45)', thickness=1, width=0),
+            legendgroup='item mean', showlegend=False, hoverinfo='skip',
+        ), row=2, col=sc)
+    # fig1b.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
+    #     line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.25,
+    #     showlegend=False, hoverinfo='skip'), row=2, col=sc)
+
+    fig1b.update_xaxes(range=[-PAD,100+PAD], title_text=x_lbl, **AXIS_STYLE, row=2, col=sc)
+    fig1b.update_yaxes(range=[-PAD,100+PAD], title_text=y_lbl, **AXIS_STYLE, row=2, col=sc)
+    fig1b.update_xaxes(showticklabels=False, showgrid=False, row=1, col=sc)
+    fig1b.update_yaxes(showticklabels=False, showgrid=False, row=2, col=mc)
+
+fig1b.update_layout(
+    width=960, height=520, plot_bgcolor=BG, paper_bgcolor='white',
+    margin=dict(l=60, r=20, t=30, b=60),
+    font=dict(family='Avenir, Helvetica Neue, Arial'),
+    hoverlabel=dict(bgcolor='rgba(255,255,255,0.45)', bordercolor='#464548',
+                    font=dict(size=13, color='#222'), namelength=0),
+    legend=dict(orientation='h', yanchor='bottom', y=1.04, xanchor='left', x=0,
+                font=dict(size=15)),
+)
+fig1b.update_traces(cliponaxis=False, selector=dict(mode='markers'))
+fig1b.show()
+fig1b.write_html(f'{RESULTS_DIR}/fig1b_conditional_scatter.html', include_plotlyjs='cdn')
+fig1b.write_image(f'{RESULTS_DIR}/fig1b_conditional_scatter.png', scale=2)
+fig1b.write_image(f'{RESULTS_DIR}/fig1b_conditional_scatter.pdf')
+```
+
+## Item Table
+
+```{python}
+joint = trials[trials['trial_type'] == 'whyask-grid-trial']
+aw_j  = joint[joint['axisOrder'] == 'AW']
+wa_j  = joint[joint['axisOrder'] == 'WA']
+
+group_cols = ['itemID', 'actionPhrase'] + (['vignette'] if 'vignette' in trials.columns else [])
+
+base = (trials.groupby(group_cols)
+        .agg(p_able=('p_able', 'mean'), p_willing=('p_willing', 'mean'),
+             n=('subjectID', 'count'))
+        .round(1))
+
+aw_conds = (aw_j.groupby('itemID')
+            .agg(**{'P(W|A)':  ('dof2_giv',  'mean'), 'P(W|¬A)': ('dof2_gnot', 'mean')})
+            .round(1))
+wa_conds = (wa_j.groupby('itemID')
+            .agg(**{'P(A|W)':  ('dof2_giv',  'mean'), 'P(A|¬W)': ('dof2_gnot', 'mean')})
+            .round(1))
+quads = (joint.groupby('itemID')
+         .agg(AW=('able_willing_count', 'mean'), ANW=('able_not_willing_count', 'mean'),
+              NAW=('not_able_willing_count', 'mean'), NANW=('not_able_not_willing_count', 'mean'))
+         .round(1))
+
+item_table = (base.join(aw_conds).join(wa_conds).join(quads)
+              .reset_index().sort_values('p_able').reset_index(drop=True))
+
+tid = 'item-tbl'
+display(HTML(f'''
+<style>
+#{tid} {{ border-collapse: collapse; font-size: 13px; width: 100%; }}
+#{tid} th {{ position: sticky; top: 0; background: #f0ede8; padding: 6px 10px;
+              border-bottom: 2px solid #ccc; cursor: pointer; user-select: none; white-space: nowrap; }}
+#{tid} th:hover {{ background: #e4e0d8; }}
+#{tid} th.asc::after  {{ content: " ▲"; font-size: 10px; }}
+#{tid} th.desc::after {{ content: " ▼"; font-size: 10px; }}
+#{tid} td {{ padding: 4px 10px; border-bottom: 1px solid #eee; }}
+#{tid} tr:hover td {{ background: #fafaf7; }}
+</style>
+<div style="height:420px; overflow-y:auto">
+{item_table.to_html(index=False, na_rep="—", table_id=tid)}
+</div>
+<script>
+(function() {{
+  var tbl = document.getElementById('{tid}');
+  var ths = Array.from(tbl.querySelectorAll('th'));
+  var sortCol = -1, asc = true;
+  ths.forEach(function(th, i) {{
+    th.addEventListener('click', function() {{
+      asc = (sortCol === i) ? !asc : true;
+      sortCol = i;
+      ths.forEach(function(h) {{ h.className = ''; }});
+      th.className = asc ? 'asc' : 'desc';
+      var tbody = tbl.querySelector('tbody');
+      var rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort(function(a, b) {{
+        var av = a.cells[i].textContent.trim();
+        var bv = b.cells[i].textContent.trim();
+        if (av === '—') return 1; if (bv === '—') return -1;
+        var an = parseFloat(av), bn = parseFloat(bv);
+        var cmp = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
+        return asc ? cmp : -cmp;
+      }});
+      rows.forEach(function(r) {{ tbody.appendChild(r); }});
+    }});
+  }});
+}})();
+</script>
+'''))
+```
+
+## Figure 2 — Joint Conditional Structure
+
+D = P(secondary|primary) − P(secondary|¬primary).
+
+```{python}
+joint = trials[trials['trial_type'] == 'whyask-grid-trial'].copy()
+
+if len(joint) == 0:
+    print('no joint trials yet')
+else:
+    joint['D'] = joint['dof2_giv'] - joint['dof2_gnot']
+    joint_conds = [c for c in ['joint-aw', 'joint-wa'] if c in joint['condition'].unique()]
+    ncols = max(len(joint_conds), 1)
+
+    fig2 = make_subplots(rows=1, cols=ncols, horizontal_spacing=0.12,
+        subplot_titles=joint_conds if joint_conds else ['no joint data'])
+
+    for ci, cond in enumerate(joint_conds, start=1):
+        g = joint[joint['condition'] == cond]
+        d1 = g['dof1_lbl'].iloc[0]
+        x_lbl = g['dof2_lbl'].iloc[0]
+        y_lbl = g['dof2n_lbl'].iloc[0]
+
+        fig2.add_trace(go.Scatter(
+            x=g['dof2_giv'], y=g['dof2_gnot'], mode='markers',
+            marker=dict(color=C[cond], size=6, opacity=0.75, line=dict(color='white', width=0.5)),
+            customdata=np.stack([g['_v'], g['_q'], g['D'].round(1), g['dof1'].round(1)], axis=1),
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>%{customdata[1]}<br>'
+                f'{d1} = %{{customdata[3]}}<br>D = %{{customdata[2]}}<extra></extra>'
+            ),
+            showlegend=False,
+        ), row=1, col=ci)
+        fig2.add_trace(go.Scatter(x=[0,100], y=[0,100], mode='lines',
+            line=dict(color='#464548', width=0.8, dash='dash'), opacity=0.3,
+            showlegend=False, hoverinfo='skip'), row=1, col=ci)
+        fig2.update_xaxes(range=[-PAD,100+PAD], title_text=x_lbl, **AXIS_STYLE, row=1, col=ci)
+        fig2.update_yaxes(range=[-PAD,100+PAD], title_text=y_lbl, **AXIS_STYLE, row=1, col=ci)
+
+    fig2.update_layout(width=500*ncols, height=480, plot_bgcolor=BG, paper_bgcolor='white',
+        margin=dict(l=70, r=20, t=60, b=80), font=dict(family='Avenir, Helvetica Neue, Arial'),
+        hoverlabel=dict(bgcolor='rgba(255,255,255,0.45)', bordercolor='#464548',
+                        font=dict(size=13, color='#222'), namelength=0))
+    fig2.show()
+    fig2.write_html(f'{RESULTS_DIR}/fig2_joint_conditional_structure.html', include_plotlyjs='cdn')
+    fig2.write_image(f'{RESULTS_DIR}/fig2_joint_conditional_structure.png', scale=2)
+
+    # D = P(secondary|primary) − P(secondary|¬primary): how much primary status shifts secondary estimate
+    for cond in joint_conds:
+        g = joint[joint['condition'] == cond]
+        print(f"{cond}  mean D = {g['D'].mean():.1f}  (sd={g['D'].std():.1f})")
+```
+
+## Figure 3 — Joint DOF Distributions
+
+Distribution of each degree of freedom for joint conditions.
+
+```{python}
+joint = trials[trials['trial_type'] == 'whyask-grid-trial'].copy()
+
+if len(joint) == 0:
+    print('no joint trials yet')
+else:
+    joint_conds = [c for c in ['joint-aw', 'joint-wa'] if c in joint['condition'].unique()]
+
+    for cond in joint_conds:
+        g = joint[joint['condition'] == cond]
+        d1_lbl  = g['dof1_lbl'].iloc[0]
+        d2_lbl  = g['dof2_lbl'].iloc[0]
+        d2n_lbl = g['dof2n_lbl'].iloc[0]
+
+        fig3 = make_subplots(rows=1, cols=3, horizontal_spacing=0.1,
+            subplot_titles=[d1_lbl, d2_lbl, d2n_lbl])
+
+        for ci, (var, color) in enumerate([
+            ('dof1',      C[cond]),
+            ('dof2_giv',  C_QUAD['ANW']),
+            ('dof2_gnot', C_QUAD['NAW']),
+        ], start=1):
+            fig3.add_trace(go.Histogram(
+                x=g[var], xbins=dict(start=0, end=100, size=10),
+                marker_color=color, opacity=0.85, showlegend=False,
+            ), row=1, col=ci)
+            fig3.update_xaxes(range=[-PAD,100+PAD], title_text='%', **AXIS_STYLE, row=1, col=ci)
+            fig3.update_yaxes(**AXIS_STYLE, row=1, col=ci)
+
+        fig3.update_layout(width=900, height=300, plot_bgcolor=BG, paper_bgcolor='white',
+            title_text=cond, title_x=0.5, title_font_size=13,
+            margin=dict(l=50, r=20, t=60, b=60), font=dict(family='Avenir, Helvetica Neue, Arial'))
+        fig3.show()
+        fig3.write_html(f'{RESULTS_DIR}/fig3_joint_dof_{cond}.html', include_plotlyjs='cdn')
+        fig3.write_image(f'{RESULTS_DIR}/fig3_joint_dof_{cond}.png', scale=2)
+```
