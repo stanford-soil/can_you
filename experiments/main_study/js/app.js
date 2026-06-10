@@ -10,7 +10,7 @@ const DATAPIPE_EXPERIMENT_ID = 'th9b0p1MhAHk';
 const DATAPIPE_URL = 'https://pipe.jspsych.org/api/data/';
 const RESEARCHER_EMAIL = 'mokeeffe@stanford.edu';
 const PROLIFIC_COMPLETION_CODE = 'CEPHL0CF'; // fixed Prolific redirect code for this study
-const TOTAL_TRIALS = 30;
+const TOTAL_TRIALS = 5;
 const LS_PREFIX = 'whyask_main.';
 
 // ─────────────────────────────────────────────────────────────
@@ -658,7 +658,7 @@ function PWelcome({ onNext }) {
           </div>
           <div className="fm-meta-block">
             <div className="fm-meta-k">Scenarios</div>
-            <div className="fm-meta-v">30 short items</div>
+            <div className="fm-meta-v">{TOTAL_TRIALS} short items</div>
           </div>
         </div>
         <div
