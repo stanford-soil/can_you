@@ -119,10 +119,17 @@
 .fm-stage {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 56px 32px 40px;
   overflow: auto;
+}
+/* keep card centered even when fm-stage is scrollable */
+.fm-stage::before,
+.fm-stage::after {
+  content: '';
+  flex: 1;
 }
 .fm-card {
   background: var(--c-card);
@@ -430,6 +437,21 @@
   opacity: 1;
   transform: translateY(0);
   margin-bottom: 20px;
+}
+
+/* Word-count hint (fades in below textarea) */
+.fm-word-hint {
+  font-family: var(--c-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--c-secondary);
+  font-weight: 600;
+  margin: 6px 0 0;
+  animation: fmHintIn 400ms cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes fmHintIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Practice tag */

@@ -246,6 +246,7 @@ function buildDemographicsCSV(record) {
     reflectionApproach: record.reflection ? record.reflection.approach : '',
     reflectionDistinguishing: record.reflection ? record.reflection.distinguishing : '',
     comprehensionAttempts: record.comprehension ? record.comprehension.attempts : '',
+    comprehensionFirstPick: record.comprehension ? record.comprehension.firstPick : '',
     comprehensionTimeMs: record.comprehension ? record.comprehension.timeToCorrectMs : '',
     studyStartMs: record.timestamps.studyStart,
     consentGivenMs: record.timestamps.consentGiven,
@@ -366,7 +367,7 @@ function initParticipantRecord(prolificID, sessionID, studyID, testSession) {
       languages: Array.from(navigator.languages || [navigator.language]),
       platform: navigator.platform || '',
     },
-    comprehension: { attempts: 0, wrongPicks: [], timeToCorrectMs: null },
+    comprehension: { attempts: 0, firstPick: null, wrongPicks: [], timeToCorrectMs: null },
     trials: [],
     reflection: null,
     demographics: null,
@@ -762,9 +763,9 @@ function PWalkthrough({ onNext, onBack }) {
   const [ans2, setAns2] = useState('');
   const stepRef = useRef(0);
 
-  // initial 3s delay before typing starts
+  // initial 6s delay before typing starts
   useEffect(() => {
-    const t = setTimeout(() => setPhase(1), 3000);
+    const t = setTimeout(() => setPhase(1), 6000);
     return () => clearTimeout(t);
   }, []);
 
@@ -786,10 +787,10 @@ function PWalkthrough({ onNext, onBack }) {
         setTimeout(tick, step.ms);
       } else if (step.action === 'type') {
         setAns1(prev => prev + step.ch);
-        setTimeout(tick, 60 + Math.random() * 60);
+        setTimeout(tick, 180 + Math.random() * 180);
       } else if (step.action === 'del') {
         setAns1(prev => prev.slice(0, -1));
-        setTimeout(tick, 40 + Math.random() * 30);
+        setTimeout(tick, 100 + Math.random() * 80);
       }
     }
     tick();
@@ -813,10 +814,10 @@ function PWalkthrough({ onNext, onBack }) {
         setTimeout(tick, step.ms);
       } else if (step.action === 'type') {
         setAns2(prev => prev + step.ch);
-        setTimeout(tick, 60 + Math.random() * 60);
+        setTimeout(tick, 180 + Math.random() * 180);
       } else if (step.action === 'del') {
         setAns2(prev => prev.slice(0, -1));
-        setTimeout(tick, 40 + Math.random() * 30);
+        setTimeout(tick, 100 + Math.random() * 80);
       }
     }
     tick();
@@ -869,6 +870,9 @@ function PWalkthrough({ onNext, onBack }) {
 // ─────────────────────────────────────────────────────────────
 // Reusable TrialForm — box-02 slide-in, timing, keystroke counts
 // ─────────────────────────────────────────────────────────────
+const MIN_WORDS = 4;
+function countWords(s) { return s.trim().split(/\s+/).filter(Boolean).length; }
+
 function TrialForm({
   scenario, utterance, onSubmit,
   submitLabel = 'Continue →', footHint, isPractice = false,
@@ -878,6 +882,8 @@ function TrialForm({
   const [box1Val, setBox1Val] = useState('');
   const [box2Val, setBox2Val] = useState('');
   const [box2Visible, setBox2Visible] = useState(false);
+  const [box1Hint, setBox1Hint] = useState(false);
+  const [box2Hint, setBox2Hint] = useState(false);
 
   // timing refs
   const shownAtMs = useRef(Date.now());
@@ -893,18 +899,36 @@ function TrialForm({
   const box1Placeholder = isGR ? 'A sentence or two…' : 'What you\'d say or do…';
   const box2Placeholder = isGR ? 'What you\'d say or do…' : 'A sentence or two…';
 
-  const ready = box1Val.trim().length > 0 && box2Val.trim().length > 0;
+  const box1Words = countWords(box1Val);
+  const box2Words = countWords(box2Val);
+  const box1Met = box1Words >= MIN_WORDS;
+  const box2Met = box2Words >= MIN_WORDS;
+  const ready = box1Met && box2Met;
 
-  // slide in box 02 after 700ms pause in box 01
+  // slide in box 02 after 700ms pause once box 01 meets min words
   useEffect(() => {
     if (box2Visible) return;
-    if (box1Val.trim().length < 1) return;
+    if (!box1Met) return;
     const t = setTimeout(() => {
       setBox2Visible(true);
       box2RevealedAt.current = Date.now();
     }, 700);
     return () => clearTimeout(t);
-  }, [box1Val, box2Visible]);
+  }, [box1Val, box2Visible, box1Met]);
+
+  // box 1 word-count hint: show after 2s idle if they typed but under threshold
+  useEffect(() => {
+    if (box1Met || box1Words === 0) { setBox1Hint(false); return; }
+    const t = setTimeout(() => setBox1Hint(true), 2000);
+    return () => clearTimeout(t);
+  }, [box1Val, box1Met, box1Words]);
+
+  // box 2 word-count hint: show after 2s idle if they typed but under threshold
+  useEffect(() => {
+    if (box2Met || box2Words === 0) { setBox2Hint(false); return; }
+    const t = setTimeout(() => setBox2Hint(true), 2000);
+    return () => clearTimeout(t);
+  }, [box2Val, box2Met, box2Words]);
 
   function handleBox1Change(e) {
     const val = e.target.value;
@@ -967,6 +991,11 @@ function TrialForm({
           onChange={handleBox1Change}
           autoFocus
         />
+        {box1Hint && (
+          <p className="fm-word-hint">
+            {box1Words} / {MIN_WORDS} words — write a little more to continue
+          </p>
+        )}
       </div>
 
       <div className={"fm-q fm-q-reveal" + (box2Visible ? " in" : "")}>
@@ -977,6 +1006,11 @@ function TrialForm({
           value={box2Val}
           onChange={handleBox2Change}
         />
+        {box2Hint && (
+          <p className="fm-word-hint">
+            {box2Words} / {MIN_WORDS} words — write a little more to continue
+          </p>
+        )}
       </div>
 
       <div className="fm-foot">
@@ -1045,6 +1079,10 @@ function PComprehension({ onNext, onBack }) {
     setPick(i);
     if (participantRecord) {
       participantRecord.comprehension.attempts++;
+      if (participantRecord.comprehension.firstPick === null) {
+        participantRecord.comprehension.firstPick = i;
+        logEvent('comprehension_first_pick', { pickedIdx: i, correct: i === correctIdx, condition });
+      }
       if (i !== correctIdx) {
         participantRecord.comprehension.wrongPicks.push(i);
         logEvent('comprehension_wrong', { pickedIdx: i, condition });
@@ -1067,17 +1105,13 @@ function PComprehension({ onNext, onBack }) {
     onBack();
   }
 
-  const firstBoxLabel = isGR ? 'your interpretation of what they meant' : 'how you\'d respond';
-  const secondBoxLabel = isGR ? 'how you\'d respond' : 'your interpretation of what they meant';
-
   return (
     <Shell screenIdx={4}>
       <div className="fm-card">
         <p className="fm-eyebrow">quick check</p>
         <h1 className="fm-title small">Just to make sure</h1>
         <p className="fm-body">
-          When someone asks <em>"Can you give me a quick trim?"</em>,
-          which response goes in the <strong>first</strong> box?
+          In the scenarios you'll see, which response goes in the <strong>first</strong> box?
         </p>
         <div className="fm-radio-group">
           {options.map((opt) => {
@@ -1098,13 +1132,12 @@ function PComprehension({ onNext, onBack }) {
         </div>
         {pick !== null && !correct && (
           <p className="fm-body fine" style={{ color: 'var(--c-warn)', fontStyle: 'italic' }}>
-            Not quite: the first box is for {firstBoxLabel}.
-            The second is for {secondBoxLabel}. Pick the other option.
+            Not quite — try the other option.
           </p>
         )}
         {correct && (
           <p className="fm-body fine" style={{ color: 'var(--c-success)', fontStyle: 'italic' }}>
-            Exactly: {firstBoxLabel} goes in the first box, {secondBoxLabel} goes in the second.
+            Correct!
           </p>
         )}
         <div className="fm-foot">
