@@ -687,6 +687,11 @@ function PWelcome({ onNext }) {
 // 02 · Instructions
 // ─────────────────────────────────────────────────────────────
 function PInstructions({ onNext, onBack }) {
+  const [gated, setGated] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setGated(false), 6000);
+    return () => clearTimeout(t);
+  }, []);
   function handleBack() {
     logEvent('back_button', { from: 'instructions', to: 'welcome' });
     onBack();
@@ -698,7 +703,7 @@ function PInstructions({ onNext, onBack }) {
         <h1 className="fm-title small">What "Can you…?" can mean</h1>
         <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both' }}>
           Sometimes people ask "can you..." questions because they want you to do something;
-          Other times, they may just be interested in whether you <em>can</em> do it.
+          other times, they may just be interested in whether you <em>can</em> do it.
         </p>
         <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 650ms both' }}>
           We're going to show you a bunch of everyday scenarios with these kinds of questions and just ask
@@ -709,7 +714,7 @@ function PInstructions({ onNext, onBack }) {
         </p>
         <div className="fm-foot">
           <button className="fm-btn ghost" onClick={handleBack}>← Back</button>
-          <button className="fm-btn" onClick={() => {
+          <button className="fm-btn" disabled={gated} onClick={() => {
             if (participantRecord) participantRecord.timestamps.instructionsDone = Date.now();
             onNext();
           }}>Continue →</button>
@@ -730,23 +735,30 @@ function buildTypingScript(text) {
 
 // GR answer scripts (goal first, then response)
 const DEMO_SCRIPT_GOAL = [
-  ...buildTypingScript("she wants me"),
-  { action: 'pause', ms: 800 },
-  ...buildTypingScript(" to"),
+  ...buildTypingScript("i think she"),
+  { action: 'pause', ms: 1200 },
+  ...buildTypingScript(" meant"),
+  { action: 'pause', ms: 900 },
+  // delete "meant" — rethinking
+  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
   { action: 'pause', ms: 1400 },
-  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
-  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
-  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
-  { action: 'del' }, { action: 'del' }, { action: 'del' },
-  { action: 'pause', ms: 600 },
-  ...buildTypingScript("i think she literally just wants me to hand her the salt"),
+  ...buildTypingScript(" just wants me to pass her the salt"),
 ];
 
 const DEMO_SCRIPT_RESP = [
-  { action: 'pause', ms: 500 },
-  ...buildTypingScript("sure"),
+  { action: 'pause', ms: 800 },
+  ...buildTypingScript("hmm"),
+  { action: 'pause', ms: 1100 },
+  ...buildTypingScript(" i would"),
+  { action: 'pause', ms: 600 },
+  ...buildTypingScript(" respond by"),
+  { action: 'pause', ms: 900 },
+  // delete "respond by" — too formal
+  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
+  { action: 'del' }, { action: 'del' }, { action: 'del' }, { action: 'del' },
+  { action: 'del' }, { action: 'del' }, { action: 'del' },
   { action: 'pause', ms: 700 },
-  ...buildTypingScript(", here you go"),
+  ...buildTypingScript(" just say sure and pass it to her"),
 ];
 
 function PWalkthrough({ onNext, onBack }) {
