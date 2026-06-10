@@ -696,15 +696,15 @@ function PInstructions({ onNext, onBack }) {
         <p className="fm-eyebrow">about this task</p>
         <h1 className="fm-title small">What "Can you…?" can mean</h1>
         <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 300ms both' }}>
-          Sometimes people ask a question because they want you to do it.
-          Sometimes they're interested in whether you can do it.
+          Sometimes people ask "can you..." questions because they want you to do something;
+          Other times, they may just be interested in whether you <em>can</em> do it.
         </p>
         <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 650ms both' }}>
-          We're going to show you a bunch of everyday scenarios and ask
-          you to imagine which you think they are.
+          We're going to show you a bunch of everyday scenarios with these kinds of questions and just ask
+          you to imagine which type of question you think they are.
         </p>
         <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 1000ms both' }}>
-          For each one, tell us what you think they meant and what you would say or do.
+          For each one, you can tell us what you think they meant and what you would say or do.
         </p>
         <div className="fm-foot">
           <button className="fm-btn ghost" onClick={handleBack}>← Back</button>
@@ -1394,14 +1394,21 @@ function ViewportLockOverlay() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Fullscreen banner
+// Fullscreen overlay (blocks interaction until they re-enter)
 // ─────────────────────────────────────────────────────────────
-function FullscreenBanner({ onReenter }) {
+function FullscreenOverlay({ onReenter }) {
   return (
-    <div className="fm-fullscreen-banner">
-      You exited fullscreen.{' '}
-      <a onClick={onReenter}>Return to fullscreen</a>{' '}
-      for the best experience.
+    <div className="fm-block-overlay">
+      <div className="fm-card" style={{ maxWidth: 480, textAlign: 'center' }}>
+        <p className="fm-eyebrow">fullscreen required</p>
+        <h1 className="fm-title small">Please return to fullscreen</h1>
+        <p className="fm-body">
+          The study needs to run in fullscreen mode. Click below to continue.
+        </p>
+        <button className="fm-btn" onClick={onReenter} style={{ marginTop: 8 }}>
+          Return to fullscreen
+        </button>
+      </div>
     </div>
   );
 }
@@ -1606,7 +1613,7 @@ function App() {
     <>
       {viewportLocked && screenIdx > 0 && <ViewportLockOverlay />}
       {showFullscreenBanner && screenIdx > 0 && screenIdx < 8 && (
-        <FullscreenBanner onReenter={reenterFullscreen} />
+        <FullscreenOverlay onReenter={reenterFullscreen} />
       )}
       {renderScreen(screenIdx, trialIdx, next, back, halfwaySave)}
     </>
