@@ -802,10 +802,10 @@ function PWalkthrough({ onNext, onBack }) {
         setTimeout(tick, step.ms);
       } else if (step.action === 'type') {
         setAns1(prev => prev + step.ch);
-        setTimeout(tick, 180 + Math.random() * 180);
+        setTimeout(tick, 120 + Math.random() * 120);
       } else if (step.action === 'del') {
         setAns1(prev => prev.slice(0, -1));
-        setTimeout(tick, 100 + Math.random() * 80);
+        setTimeout(tick, 65 + Math.random() * 55);
       }
     }
     tick();
@@ -829,10 +829,10 @@ function PWalkthrough({ onNext, onBack }) {
         setTimeout(tick, step.ms);
       } else if (step.action === 'type') {
         setAns2(prev => prev + step.ch);
-        setTimeout(tick, 180 + Math.random() * 180);
+        setTimeout(tick, 120 + Math.random() * 120);
       } else if (step.action === 'del') {
         setAns2(prev => prev.slice(0, -1));
-        setTimeout(tick, 100 + Math.random() * 80);
+        setTimeout(tick, 65 + Math.random() * 55);
       }
     }
     tick();
@@ -856,7 +856,7 @@ function PWalkthrough({ onNext, onBack }) {
           </p>
           <p className="fm-demo-utt">"Can you pass the salt?"</p>
           <p className="fm-demo-q"><span className="num">01</span> {box1Label}</p>
-          <div className={"fm-demo-ans" + (phase === 1 ? " typing" : "") + (phase < 1 ? " empty" : "")}>
+          <div className={"fm-demo-ans" + (phase <= 1 ? " typing" : "") + (phase < 1 ? " empty" : "")}>
             {ans1 || '…'}
           </div>
           {phase >= 2 && (
