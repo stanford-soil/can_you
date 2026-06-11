@@ -924,27 +924,60 @@ function PWalkthrough2AFC({ onNext, onBack }) {
   const leftLabel = isAI ? 'Action' : 'Information';
   const rightLabel = isAI ? 'Information' : 'Action';
 
-  // phases: 0=reading, 1=cursor moves to choice, 2=click choice, 3=cursor to slider, 4=drag slider, 5=done
+  // phases: 0=reading, 1=cursor moves to choice, 2=click choice, 3=slider visible+cursor to it, 4=drag slider, 5=done
   const [phase, setPhase] = useState(0);
   const [sliderVal, setSliderVal] = useState(50);
-  // cursor position as % from top-left of the demo area
-  const [cursorPos, setCursorPos] = useState({ x: 70, y: 20 });
-  const [cursorVisible, setCursorVisible] = useState(false);
+  // cursor pixel position relative to the demo container
+  const [cursorPx, setCursorPx] = useState(null);
+  const demoRef = useRef(null);
+  const sliderRef = useRef(null);
+
+  // helper: get px position of an element's center relative to demo container
+  function elemCenter(selector) {
+    if (!demoRef.current) return null;
+    const container = demoRef.current.getBoundingClientRect();
+    const el = demoRef.current.querySelector(selector);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2 - container.left, y: r.top + r.height / 2 - container.top };
+  }
+
+  // helper: get px position of slider thumb at a given value (0-100)
+  function sliderThumbPos(val) {
+    if (!sliderRef.current || !demoRef.current) return null;
+    const container = demoRef.current.getBoundingClientRect();
+    const sr = sliderRef.current.getBoundingClientRect();
+    const thumbOffset = 8; // half thumb width
+    const trackWidth = sr.width - thumbOffset * 2;
+    const x = sr.left - container.left + thumbOffset + (val / 100) * trackWidth;
+    const y = sr.top - container.top + sr.height / 2;
+    return { x, y };
+  }
 
   useEffect(() => {
     const timers = [];
     let animFrame;
-    // 2.5s: show cursor, idle near top
-    timers.push(setTimeout(() => { setCursorVisible(true); setPhase(1); }, 2500));
-    // 3.5s: move cursor toward the "action" choice
-    timers.push(setTimeout(() => setCursorPos(isAI ? { x: 25, y: 58 } : { x: 75, y: 58 }), 3500));
-    // 4.5s: click choice
-    timers.push(setTimeout(() => setPhase(2), 4500));
-    // 5.5s: move cursor down toward slider area
-    timers.push(setTimeout(() => { setPhase(3); setCursorPos({ x: 15, y: 82 }); }, 5500));
-    // 6.8s: move cursor to slider midpoint
-    timers.push(setTimeout(() => setCursorPos({ x: 50, y: 82 }), 6800));
-    // 7.5s: drag slider from 50 to 72
+    // 0s: show cursor immediately, idle near top-right of demo
+    setCursorPx({ x: 300, y: 40 });
+    // 2.5s: move cursor toward the target choice
+    timers.push(setTimeout(() => {
+      setPhase(1);
+      const target = isAI ? '.fm-demo-2afc-choice:first-child' : '.fm-demo-2afc-choice:last-child';
+      const pos = elemCenter(target);
+      if (pos) setCursorPx(pos);
+    }, 2500));
+    // 3.5s: click choice
+    timers.push(setTimeout(() => setPhase(2), 3500));
+    // 4.5s: show slider + move cursor to slider midpoint
+    timers.push(setTimeout(() => {
+      setPhase(3);
+      // small delay to let slider render before measuring
+      setTimeout(() => {
+        const pos = sliderThumbPos(50);
+        if (pos) setCursorPx(pos);
+      }, 100);
+    }, 4500));
+    // 6s: drag slider from 50 to 72
     timers.push(setTimeout(() => {
       setPhase(4);
       const start = Date.now();
@@ -953,14 +986,14 @@ function PWalkthrough2AFC({ onNext, onBack }) {
         const t = Math.min((Date.now() - start) / dur, 1);
         const val = Math.round(from + (to - from) * t);
         setSliderVal(val);
-        // move cursor x from ~50% to ~62% as slider drags
-        setCursorPos(prev => ({ x: 50 + (to - from) * t * 0.55, y: prev.y }));
+        const pos = sliderThumbPos(val);
+        if (pos) setCursorPx(pos);
         if (t < 1) animFrame = requestAnimationFrame(step);
       }
       animFrame = requestAnimationFrame(step);
-    }, 7500));
-    // 9s: done
-    timers.push(setTimeout(() => { setPhase(5); setCursorVisible(false); }, 9000));
+    }, 6000));
+    // 7.5s: done
+    timers.push(setTimeout(() => setPhase(5), 7500));
     return () => { timers.forEach(clearTimeout); if (animFrame) cancelAnimationFrame(animFrame); };
   }, []);
 
@@ -978,11 +1011,11 @@ function PWalkthrough2AFC({ onNext, onBack }) {
       <div className="fm-card fm-card--centered">
         <p className="fm-eyebrow">quick walkthrough</p>
         <h1 className="fm-title small">Here's what a trial looks like</h1>
-        <div className="fm-demo" style={{ position: 'relative' }}>
-          {cursorVisible && (
-            <div className="fm-demo-cursor" style={{
-              left: cursorPos.x + '%',
-              top: cursorPos.y + '%',
+        <div className="fm-demo" style={{ position: 'relative' }} ref={demoRef}>
+          {cursorPx && phase < 5 && (
+            <div className={"fm-demo-cursor" + (phase === 4 ? " dragging" : "")} style={{
+              left: cursorPx.x + 'px',
+              top: cursorPx.y + 'px',
             }} />
           )}
           <p className="fm-demo-scenario">
@@ -1008,6 +1041,7 @@ function PWalkthrough2AFC({ onNext, onBack }) {
               How confident are you?
             </p>
             <input
+              ref={sliderRef}
               type="range"
               className="fm-demo-slider"
               min="0" max="100"

@@ -695,6 +695,9 @@
   background-size: contain;
   background-repeat: no-repeat;
 }
+.fm-demo-cursor.dragging {
+  transition: none;
+}
 
 /* Practice tag */
 .fm-practice-tag {
