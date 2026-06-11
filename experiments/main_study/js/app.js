@@ -230,6 +230,8 @@ function buildTrialsCSV(record) {
         interpretation: '', response: '',
         timeToFirstInterpKeystrokeMs: '', timeToFirstRespKeystrokeMs: '',
         interpKeystrokes: '', respKeystrokes: '',
+        interpRevisions: '', respRevisions: '',
+        box2RevealedAtMs: '',
         interpChars: '', respChars: '',
       };
     }
@@ -244,6 +246,9 @@ function buildTrialsCSV(record) {
       timeToFirstRespKeystrokeMs: t.timeToFirstRespKeystrokeMs,
       interpKeystrokes: t.interpKeystrokes,
       respKeystrokes: t.respKeystrokes,
+      interpRevisions: t.interpRevisions || 0,
+      respRevisions: t.respRevisions || 0,
+      box2RevealedAtMs: t.box2RevealedAtMs || '',
       interpChars: t.characters ? t.characters.interp : '',
       respChars: t.characters ? t.characters.resp : '',
     };
@@ -271,6 +276,7 @@ function buildDemographicsCSV(record) {
     reflectionDistinguishing: record.reflection ? record.reflection.distinguishing : '',
     comprehensionAttempts: record.comprehension ? record.comprehension.attempts : '',
     comprehensionFirstPick: record.comprehension ? record.comprehension.firstPick : '',
+    comprehensionWrongPicks: record.comprehension ? record.comprehension.wrongPicks.join('|') : '',
     comprehensionTimeMs: record.comprehension ? record.comprehension.timeToCorrectMs : '',
     studyStartMs: record.timestamps.studyStart,
     consentGivenMs: record.timestamps.consentGiven,
@@ -714,6 +720,8 @@ function PWelcome({ onNext }) {
 // ─────────────────────────────────────────────────────────────
 function PInstructions({ onNext, onBack }) {
   const [gated, setGated] = useState(true);
+  const condition = participantRecord ? participantRecord.orderCondition : 'GR';
+  const is2AFC = IS_2AFC(condition);
   useEffect(() => {
     const t = setTimeout(() => setGated(false), 6000);
     return () => clearTimeout(t);
@@ -736,7 +744,9 @@ function PInstructions({ onNext, onBack }) {
           you to imagine which type of question you think they are.
         </p>
         <p className="fm-body" style={{ animation: 'fadeUp 600ms cubic-bezier(.2,.8,.2,1) 1000ms both' }}>
-          For each one, you can tell us what you think they meant and what you would say or do.
+          {is2AFC
+            ? "For each one, we'll ask whether you think they want information or want you to take action."
+            : "For each one, you can tell us what you think they meant and what you would say or do."}
         </p>
         <div className="fm-foot">
           <button className="fm-btn ghost" onClick={handleBack}>← Back</button>
@@ -914,23 +924,42 @@ function PWalkthrough2AFC({ onNext, onBack }) {
   const leftLabel = isAI ? 'Action' : 'Information';
   const rightLabel = isAI ? 'Information' : 'Action';
 
-  // phase: 0=reading, 1=choice appears, 2=choice selected, 3=slider visible, 4=slider moved, 5=done
+  // phases: 0=reading, 1=cursor moves to choice, 2=click choice, 3=cursor to slider, 4=drag slider, 5=done
   const [phase, setPhase] = useState(0);
-  const [sliderVal, setSliderVal] = useState(50);
+  const [sliderVal, setSliderVal] = useState(0);
+  // cursor position as % from top-left of the demo area
+  const [cursorPos, setCursorPos] = useState({ x: 70, y: 20 });
+  const [cursorVisible, setCursorVisible] = useState(false);
 
   useEffect(() => {
     const timers = [];
-    // 3s: highlight the choices
-    timers.push(setTimeout(() => setPhase(1), 3000));
-    // 5s: select "action" (left for AI, right for IA)
-    timers.push(setTimeout(() => setPhase(2), 5000));
-    // 6.5s: show slider
-    timers.push(setTimeout(() => setPhase(3), 6500));
-    // 8s: start moving slider
-    timers.push(setTimeout(() => { setPhase(4); setSliderVal(72); }, 8000));
-    // 9.5s: done
-    timers.push(setTimeout(() => setPhase(5), 9500));
-    return () => timers.forEach(clearTimeout);
+    let animFrame;
+    // 2.5s: show cursor, idle near top
+    timers.push(setTimeout(() => { setCursorVisible(true); setPhase(1); }, 2500));
+    // 3.5s: move cursor toward the "action" choice
+    timers.push(setTimeout(() => setCursorPos(isAI ? { x: 25, y: 58 } : { x: 75, y: 58 }), 3500));
+    // 4.5s: click choice
+    timers.push(setTimeout(() => setPhase(2), 4500));
+    // 5.5s: move cursor down toward slider area
+    timers.push(setTimeout(() => { setPhase(3); setCursorPos({ x: 15, y: 82 }); }, 5500));
+    // 7s: start dragging slider from ~0 to 72
+    timers.push(setTimeout(() => {
+      setPhase(4);
+      const start = Date.now();
+      const from = 0, to = 72, dur = 1200;
+      function step() {
+        const t = Math.min((Date.now() - start) / dur, 1);
+        const val = Math.round(from + (to - from) * t);
+        setSliderVal(val);
+        // move cursor x from ~15% to ~60% as slider drags
+        setCursorPos(prev => ({ x: 15 + (to - from) * t * 0.65, y: prev.y }));
+        if (t < 1) animFrame = requestAnimationFrame(step);
+      }
+      animFrame = requestAnimationFrame(step);
+    }, 7000));
+    // 9s: done
+    timers.push(setTimeout(() => { setPhase(5); setCursorVisible(false); }, 9000));
+    return () => { timers.forEach(clearTimeout); if (animFrame) cancelAnimationFrame(animFrame); };
   }, []);
 
   function handleBack() {
@@ -947,7 +976,13 @@ function PWalkthrough2AFC({ onNext, onBack }) {
       <div className="fm-card fm-card--centered">
         <p className="fm-eyebrow">quick walkthrough</p>
         <h1 className="fm-title small">Here's what a trial looks like</h1>
-        <div className="fm-demo">
+        <div className="fm-demo" style={{ position: 'relative' }}>
+          {cursorVisible && (
+            <div className="fm-demo-cursor" style={{
+              left: cursorPos.x + '%',
+              top: cursorPos.y + '%',
+            }} />
+          )}
           <p className="fm-demo-scenario">
             You're sitting at the dinner table with your family.
             Your mom looks over at you and asks:
@@ -966,7 +1001,7 @@ function PWalkthrough2AFC({ onNext, onBack }) {
               <span>{rightLabel}</span>
             </div>
           </div>
-          <div className={"fm-demo-slider-wrap" + (phase >= 3 ? " in" : "")}>
+          <div className={"fm-demo-slider-wrap" + (phase >= 3 ? " in" : "")} style={{ marginTop: 16 }}>
             <p className="fm-demo-q" style={{ fontSize: '12px', marginBottom: 8, color: 'var(--c-muted)' }}>
               How confident are you?
             </p>
@@ -976,6 +1011,7 @@ function PWalkthrough2AFC({ onNext, onBack }) {
               min="0" max="100"
               value={sliderVal}
               readOnly
+              style={{ background: `linear-gradient(to right, var(--c-accent) ${sliderVal}%, var(--c-hairline) ${sliderVal}%)` }}
             />
             <div className="fm-slider-labels">
               <span>not at all confident</span>
@@ -1250,6 +1286,13 @@ function TrialForm2AFC({
             min="0" max="100"
             value={confidence}
             onChange={handleSlider}
+            onPointerDown={() => {
+              if (!sliderMoved) {
+                setSliderMoved(true);
+                sliderFirstMoveMs.current = Date.now();
+              }
+            }}
+            style={{ background: `linear-gradient(to right, var(--c-accent) ${confidence}%, var(--c-hairline) ${confidence}%)` }}
           />
           <div className="fm-slider-labels">
             <span>not at all confident</span>

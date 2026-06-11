@@ -538,7 +538,7 @@
   max-height: 200px;
   opacity: 1;
   transform: translateY(0);
-  margin-top: 20px;
+  margin-top: 28px;
 }
 .fm-confidence-lbl {
   font-family: var(--c-sans);
@@ -673,7 +673,6 @@
   background: var(--c-accent);
   border: 2px solid white;
   box-shadow: 0 1px 3px rgba(0,0,0,.15);
-  transition: left 600ms ease;
 }
 .fm-demo-slider::-moz-range-thumb {
   width: 16px; height: 16px;
@@ -681,6 +680,20 @@
   background: var(--c-accent);
   border: 2px solid white;
   box-shadow: 0 1px 3px rgba(0,0,0,.15);
+}
+
+/* Demo cursor */
+.fm-demo-cursor {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  z-index: 10;
+  pointer-events: none;
+  transition: left 800ms cubic-bezier(.4,.0,.2,1), top 800ms cubic-bezier(.4,.0,.2,1);
+  /* CSS cursor shape via SVG */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z' fill='%23161B2E' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
 }
 
 /* Practice tag */
