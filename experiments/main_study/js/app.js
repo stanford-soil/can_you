@@ -95,12 +95,13 @@ function sampleStimuli(participantID, n = 30) {
   return all.slice(-n).reverse();
 }
 
+const ALL_CONDITIONS = ['GR', 'RG', 'AI', 'IA'];
 function assignCondition(participantID) {
   // prefer condition from URL (set by index.html gateway via DataPipe)
   const urlCond = new URLSearchParams(window.location.search).get('condition');
-  if (urlCond === 'GR' || urlCond === 'RG') return urlCond;
+  if (ALL_CONDITIONS.includes(urlCond)) return urlCond;
   // fallback: hash-based (for dev/test sessions without gateway)
-  return (hashStr(participantID) % 2 === 0) ? 'GR' : 'RG';
+  return ALL_CONDITIONS[hashStr(participantID) % ALL_CONDITIONS.length];
 }
 
 // rebuild _stimuli cache from a saved stimuliShown itemID list
@@ -203,28 +204,50 @@ function buildTrialsCSV(record) {
     experimentName: record.experimentName,
     version: record.version,
   };
-  return record.trials.map(t => ({
-    ...meta,
-    itemID: t.itemID,
-    trialIdx: t.trialIdx,
-    scenario: t.scenario,
-    utterance: t.utterance,
-    interpretation: t.interpretation,
-    response: t.response,
-    order: t.order,
-    shownAtMs: t.shownAtMs,
-    submittedAtMs: t.submittedAtMs,
-    totalTimeMs: t.totalTimeMs,
-    timeToFirstInterpKeystrokeMs: t.timeToFirstInterpKeystrokeMs,
-    timeToFirstRespKeystrokeMs: t.timeToFirstRespKeystrokeMs,
-    interpKeystrokes: t.interpKeystrokes,
-    respKeystrokes: t.respKeystrokes,
-    interpRevisions: t.interpRevisions,
-    respRevisions: t.respRevisions,
-    box2RevealedAtMs: t.box2RevealedAtMs,
-    interpChars: t.characters ? t.characters.interp : '',
-    respChars: t.characters ? t.characters.resp : '',
-  }));
+  return record.trials.map(t => {
+    const base = {
+      ...meta,
+      trialType: t.trialType || 'free_response',
+      itemID: t.itemID,
+      trialIdx: t.trialIdx,
+      scenario: t.scenario,
+      utterance: t.utterance,
+      order: t.order,
+      shownAtMs: t.shownAtMs,
+      submittedAtMs: t.submittedAtMs,
+      totalTimeMs: t.totalTimeMs,
+    };
+    if (t.trialType === '2afc') {
+      return {
+        ...base,
+        choice: t.choice,
+        choicePosition: t.choicePosition,
+        confidence: t.confidence,
+        choiceAtMs: t.choiceAtMs,
+        timeToFirstChoiceMs: t.timeToFirstChoiceMs,
+        timeToSliderMs: t.timeToSliderMs,
+        // blank free-response cols for consistent CSV
+        interpretation: '', response: '',
+        timeToFirstInterpKeystrokeMs: '', timeToFirstRespKeystrokeMs: '',
+        interpKeystrokes: '', respKeystrokes: '',
+        interpChars: '', respChars: '',
+      };
+    }
+    return {
+      ...base,
+      // blank 2afc cols for consistent CSV
+      choice: '', choicePosition: '', confidence: '',
+      choiceAtMs: '', timeToFirstChoiceMs: '', timeToSliderMs: '',
+      interpretation: t.interpretation,
+      response: t.response,
+      timeToFirstInterpKeystrokeMs: t.timeToFirstInterpKeystrokeMs,
+      timeToFirstRespKeystrokeMs: t.timeToFirstRespKeystrokeMs,
+      interpKeystrokes: t.interpKeystrokes,
+      respKeystrokes: t.respKeystrokes,
+      interpChars: t.characters ? t.characters.interp : '',
+      respChars: t.characters ? t.characters.resp : '',
+    };
+  });
 }
 
 function buildDemographicsCSV(record) {
@@ -883,6 +906,98 @@ function PWalkthrough({ onNext, onBack }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 03b · Walkthrough — animated 2AFC demo
+// ─────────────────────────────────────────────────────────────
+function PWalkthrough2AFC({ onNext, onBack }) {
+  const condition = participantRecord ? participantRecord.orderCondition : 'AI';
+  const isAI = condition === 'AI';
+  const leftLabel = isAI ? 'Action' : 'Information';
+  const rightLabel = isAI ? 'Information' : 'Action';
+
+  // phase: 0=reading, 1=choice appears, 2=choice selected, 3=slider visible, 4=slider moved, 5=done
+  const [phase, setPhase] = useState(0);
+  const [sliderVal, setSliderVal] = useState(50);
+
+  useEffect(() => {
+    const timers = [];
+    // 3s: highlight the choices
+    timers.push(setTimeout(() => setPhase(1), 3000));
+    // 5s: select "action" (left for AI, right for IA)
+    timers.push(setTimeout(() => setPhase(2), 5000));
+    // 6.5s: show slider
+    timers.push(setTimeout(() => setPhase(3), 6500));
+    // 8s: start moving slider
+    timers.push(setTimeout(() => { setPhase(4); setSliderVal(72); }, 8000));
+    // 9.5s: done
+    timers.push(setTimeout(() => setPhase(5), 9500));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  function handleBack() {
+    logEvent('back_button', { from: 'walkthrough', to: 'instructions' });
+    onBack();
+  }
+
+  const actionSelected = phase >= 2;
+  const leftSelected = isAI ? actionSelected : false;
+  const rightSelected = isAI ? false : actionSelected;
+
+  return (
+    <Shell screenIdx={2}>
+      <div className="fm-card fm-card--centered">
+        <p className="fm-eyebrow">quick walkthrough</p>
+        <h1 className="fm-title small">Here's what a trial looks like</h1>
+        <div className="fm-demo">
+          <p className="fm-demo-scenario">
+            You're sitting at the dinner table with your family.
+            Your mom looks over at you and asks:
+          </p>
+          <p className="fm-demo-utt">"Can you pass the salt?"</p>
+          <p className="fm-demo-q" style={{ marginBottom: 8 }}>
+            What do you think this speaker wants from you?
+          </p>
+          <div className="fm-demo-2afc-choices">
+            <div className={"fm-demo-2afc-choice" + (leftSelected ? " selected" : "")}>
+              <div className="fm-demo-2afc-dot" />
+              <span>{leftLabel}</span>
+            </div>
+            <div className={"fm-demo-2afc-choice" + (rightSelected ? " selected" : "")}>
+              <div className="fm-demo-2afc-dot" />
+              <span>{rightLabel}</span>
+            </div>
+          </div>
+          <div className={"fm-demo-slider-wrap" + (phase >= 3 ? " in" : "")}>
+            <p className="fm-demo-q" style={{ fontSize: '12px', marginBottom: 8, color: 'var(--c-muted)' }}>
+              How confident are you?
+            </p>
+            <input
+              type="range"
+              className="fm-demo-slider"
+              min="0" max="100"
+              value={sliderVal}
+              readOnly
+            />
+            <div className="fm-slider-labels">
+              <span>not at all confident</span>
+              <span>very confident</span>
+            </div>
+          </div>
+        </div>
+        <div className="fm-foot">
+          <button className="fm-btn ghost" onClick={handleBack}>← Back</button>
+          <button className="fm-btn" disabled={phase < 5} onClick={() => {
+            if (participantRecord) participantRecord.timestamps.walkthroughDone = Date.now();
+            onNext();
+          }}>
+            Try a practice trial →
+          </button>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // Reusable TrialForm — box-02 slide-in, timing, keystroke counts
 // ─────────────────────────────────────────────────────────────
 const MIN_WORDS = 4;
@@ -1043,17 +1158,135 @@ function TrialForm({
 }
 
 // ─────────────────────────────────────────────────────────────
+// Reusable TrialForm2AFC — 2AFC choice + confidence slider
+// ─────────────────────────────────────────────────────────────
+function TrialForm2AFC({
+  scenario, utterance, onSubmit,
+  submitLabel = 'Continue →', footHint, isPractice = false,
+  condition = 'AI', // AI: action-left, IA: information-left
+  onIdleReset,
+}) {
+  const [choice, setChoice] = useState(null); // 'action' or 'information'
+  const [confidence, setConfidence] = useState(50);
+  const [sliderMoved, setSliderMoved] = useState(false);
+
+  const shownAtMs = useRef(Date.now());
+  const choiceAtMs = useRef(null);
+  const firstChoiceAtMs = useRef(null);
+  const sliderFirstMoveMs = useRef(null);
+
+  const isAI = condition === 'AI';
+  const leftLabel = isAI ? 'Action' : 'Information';
+  const rightLabel = isAI ? 'Information' : 'Action';
+  const leftValue = isAI ? 'action' : 'information';
+  const rightValue = isAI ? 'information' : 'action';
+
+  const ready = choice !== null && sliderMoved;
+
+  function handleChoice(val) {
+    setChoice(val);
+    choiceAtMs.current = Date.now();
+    if (!firstChoiceAtMs.current) firstChoiceAtMs.current = Date.now();
+    if (onIdleReset) onIdleReset();
+  }
+
+  function handleSlider(e) {
+    setConfidence(Number(e.target.value));
+    if (!sliderMoved) {
+      setSliderMoved(true);
+      sliderFirstMoveMs.current = Date.now();
+    }
+    if (onIdleReset) onIdleReset();
+  }
+
+  function handleSubmit() {
+    if (!ready) return;
+    const submittedAtMs = Date.now();
+    onSubmit({
+      choice,
+      choicePosition: choice === leftValue ? 'left' : 'right',
+      confidence,
+      shownAtMs: shownAtMs.current,
+      submittedAtMs,
+      totalTimeMs: submittedAtMs - shownAtMs.current,
+      choiceAtMs: choiceAtMs.current,
+      timeToFirstChoiceMs: firstChoiceAtMs.current ? firstChoiceAtMs.current - shownAtMs.current : null,
+      timeToSliderMs: sliderFirstMoveMs.current ? sliderFirstMoveMs.current - shownAtMs.current : null,
+    });
+  }
+
+  const hint = footHint || (ready ? 'auto-saved' : choice ? 'adjust the slider to continue' : 'select a response to continue');
+
+  return (
+    <div className="fm-card">
+      {isPractice && <span className="fm-practice-tag">practice · not recorded</span>}
+      <p className="fm-scenario">{scenario}</p>
+      <p className="fm-utt">{utterance}</p>
+
+      <p className="fm-2afc-prompt">What do you think this speaker wants from you?</p>
+      <div className="fm-2afc-choices">
+        <div
+          className={"fm-2afc-choice" + (choice === leftValue ? " selected" : "")}
+          onClick={() => handleChoice(leftValue)}
+        >
+          <div className="fm-2afc-dot" />
+          <span className="fm-2afc-label">{leftLabel}</span>
+        </div>
+        <div
+          className={"fm-2afc-choice" + (choice === rightValue ? " selected" : "")}
+          onClick={() => handleChoice(rightValue)}
+        >
+          <div className="fm-2afc-dot" />
+          <span className="fm-2afc-label">{rightLabel}</span>
+        </div>
+      </div>
+
+      <div className={"fm-confidence" + (choice !== null ? " in" : "")}>
+        <p className="fm-confidence-lbl">How confident are you?</p>
+        <div className="fm-slider-wrap">
+          <input
+            type="range"
+            className="fm-slider"
+            min="0" max="100"
+            value={confidence}
+            onChange={handleSlider}
+          />
+          <div className="fm-slider-labels">
+            <span>not at all confident</span>
+            <span>very confident</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="fm-foot">
+        <span className="fm-foot-hint">{hint}</span>
+        <button
+          className="fm-btn"
+          disabled={!ready}
+          onClick={handleSubmit}
+        >
+          {submitLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // 04 · Practice trial
 // ─────────────────────────────────────────────────────────────
+const IS_2AFC = cond => cond === 'AI' || cond === 'IA';
+
 function PPractice({ onNext, onBack }) {
   const condition = participantRecord ? participantRecord.orderCondition : 'GR';
   function handleBack() {
     logEvent('back_button', { from: 'practice', to: 'walkthrough' });
     onBack();
   }
+  const FormComponent = IS_2AFC(condition) ? TrialForm2AFC : TrialForm;
   return (
     <Shell screenIdx={3}>
-      <TrialForm
+      <FormComponent
         isPractice
         scenario="You're at a friend's apartment helping them pack. The boxes are stacked near the door. They turn to you and say:"
         utterance="Can you grab the tape?"
@@ -1075,20 +1308,29 @@ function PComprehension({ onNext, onBack }) {
   const [pick, setPick] = useState(null);
   const startTimeRef = useRef(Date.now());
   const condition = participantRecord ? participantRecord.orderCondition : 'GR';
-  const isGR = condition === 'GR';
-  // correct answer depends on condition: GR → first box is goal/interpretation (idx 0), RG → first box is response (idx 1)
-  const correctIdx = isGR ? 0 : 1;
-  const correct = pick === correctIdx;
+  const is2AFC = IS_2AFC(condition);
 
-  const options = isGR
-    ? [
-        { i: 0, text: 'what they meant by asking the question' },
-        { i: 1, text: 'what I would say or do in response' },
-      ]
-    : [
-        { i: 0, text: 'what they meant by asking the question' },
-        { i: 1, text: 'what I would say or do in response' },
-      ];
+  // free-response: correct = which goes in first box
+  // 2AFC: correct = what are you deciding
+  let question, options, correctIdx;
+  if (is2AFC) {
+    question = 'In each scenario, what are you being asked to decide?';
+    options = [
+      { i: 0, text: 'whether the speaker wants information or action' },
+      { i: 1, text: 'what I would say or do in response' },
+    ];
+    correctIdx = 0;
+  } else {
+    const isGR = condition === 'GR';
+    question = 'In the scenarios you\'ll see, which response goes in the first box?';
+    options = [
+      { i: 0, text: 'what they meant by asking the question' },
+      { i: 1, text: 'what I would say or do in response' },
+    ];
+    correctIdx = isGR ? 0 : 1;
+  }
+
+  const correct = pick === correctIdx;
 
   function handlePick(i) {
     setPick(i);
@@ -1125,9 +1367,7 @@ function PComprehension({ onNext, onBack }) {
       <div className="fm-card">
         <p className="fm-eyebrow">quick check</p>
         <h1 className="fm-title small">Just to make sure</h1>
-        <p className="fm-body">
-          In the scenarios you'll see, which response goes in the <strong>first</strong> box?
-        </p>
+        <p className="fm-body">{question}</p>
         <div className="fm-radio-group">
           {options.map((opt) => {
             const sel = pick === opt.i;
@@ -1229,31 +1469,53 @@ function PTrial({ trialIdx, onNext, onHalfwaySave }) {
     return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
   }, [trialIdx]);
 
+  const is2AFC = IS_2AFC(condition);
+
   function handleSubmit(timingData) {
     if (!participantRecord) return;
-    const trialRecord = {
+    const base = {
       itemID: String(t.itemID),
       trialIdx,
       scenario,
       utterance,
-      interpretation: timingData.interp,
-      response: timingData.resp,
       order: condition,
       shownAtMs: timingData.shownAtMs,
       submittedAtMs: timingData.submittedAtMs,
       totalTimeMs: timingData.totalTimeMs,
-      timeToFirstInterpKeystrokeMs: timingData.timeToFirstInterpKeystrokeMs,
-      timeToFirstRespKeystrokeMs: timingData.timeToFirstRespKeystrokeMs,
-      interpKeystrokes: timingData.interpKeystrokes,
-      respKeystrokes: timingData.respKeystrokes,
-      interpRevisions: 0,
-      respRevisions: 0,
-      box2RevealedAtMs: timingData.box2RevealedAtMs,
-      characters: timingData.characters,
     };
+
+    let trialRecord;
+    if (is2AFC) {
+      trialRecord = {
+        ...base,
+        trialType: '2afc',
+        choice: timingData.choice,
+        choicePosition: timingData.choicePosition,
+        confidence: timingData.confidence,
+        choiceAtMs: timingData.choiceAtMs,
+        timeToFirstChoiceMs: timingData.timeToFirstChoiceMs,
+        timeToSliderMs: timingData.timeToSliderMs,
+      };
+    } else {
+      trialRecord = {
+        ...base,
+        trialType: 'free_response',
+        interpretation: timingData.interp,
+        response: timingData.resp,
+        timeToFirstInterpKeystrokeMs: timingData.timeToFirstInterpKeystrokeMs,
+        timeToFirstRespKeystrokeMs: timingData.timeToFirstRespKeystrokeMs,
+        interpKeystrokes: timingData.interpKeystrokes,
+        respKeystrokes: timingData.respKeystrokes,
+        interpRevisions: 0,
+        respRevisions: 0,
+        box2RevealedAtMs: timingData.box2RevealedAtMs,
+        characters: timingData.characters,
+      };
+    }
     participantRecord.trials.push(trialRecord);
 
-    if (trialIdx === 15) {
+    const halfwayTrial = Math.floor(TOTAL_TRIALS / 2);
+    if (trialIdx === halfwayTrial) {
       onHalfwaySave();
     }
 
@@ -1264,9 +1526,11 @@ function PTrial({ trialIdx, onNext, onHalfwaySave }) {
     onNext();
   }
 
+  const FormComponent = is2AFC ? TrialForm2AFC : TrialForm;
+
   return (
     <Shell screenIdx={5} trialIdx={trialIdx} trialTotal={TOTAL_TRIALS}>
-      <TrialForm
+      <FormComponent
         key={trialIdx}
         scenario={scenario}
         utterance={utterance}
@@ -1796,7 +2060,12 @@ function renderScreen(screenIdx, trialIdx, next, back, halfwaySave) {
   switch (screenIdx) {
     case 0: return <PWelcome onNext={next} />;
     case 1: return <PInstructions onNext={next} onBack={back} />;
-    case 2: return <PWalkthrough onNext={next} onBack={back} />;
+    case 2: {
+      const cond = participantRecord ? participantRecord.orderCondition : 'GR';
+      return IS_2AFC(cond)
+        ? <PWalkthrough2AFC onNext={next} onBack={back} />
+        : <PWalkthrough onNext={next} onBack={back} />;
+    }
     case 3: return <PPractice onNext={next} onBack={back} />;
     case 4: return <PComprehension onNext={next} onBack={back} />;
     case 5: return <PTrial trialIdx={trialIdx} onNext={next} onHalfwaySave={halfwaySave} />;
