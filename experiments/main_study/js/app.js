@@ -926,7 +926,7 @@ function PWalkthrough2AFC({ onNext, onBack }) {
 
   // phases: 0=reading, 1=cursor moves to choice, 2=click choice, 3=cursor to slider, 4=drag slider, 5=done
   const [phase, setPhase] = useState(0);
-  const [sliderVal, setSliderVal] = useState(0);
+  const [sliderVal, setSliderVal] = useState(50);
   // cursor position as % from top-left of the demo area
   const [cursorPos, setCursorPos] = useState({ x: 70, y: 20 });
   const [cursorVisible, setCursorVisible] = useState(false);
@@ -942,21 +942,23 @@ function PWalkthrough2AFC({ onNext, onBack }) {
     timers.push(setTimeout(() => setPhase(2), 4500));
     // 5.5s: move cursor down toward slider area
     timers.push(setTimeout(() => { setPhase(3); setCursorPos({ x: 15, y: 82 }); }, 5500));
-    // 7s: start dragging slider from ~0 to 72
+    // 6.8s: move cursor to slider midpoint
+    timers.push(setTimeout(() => setCursorPos({ x: 50, y: 82 }), 6800));
+    // 7.5s: drag slider from 50 to 72
     timers.push(setTimeout(() => {
       setPhase(4);
       const start = Date.now();
-      const from = 0, to = 72, dur = 1200;
+      const from = 50, to = 72, dur = 1000;
       function step() {
         const t = Math.min((Date.now() - start) / dur, 1);
         const val = Math.round(from + (to - from) * t);
         setSliderVal(val);
-        // move cursor x from ~15% to ~60% as slider drags
-        setCursorPos(prev => ({ x: 15 + (to - from) * t * 0.65, y: prev.y }));
+        // move cursor x from ~50% to ~62% as slider drags
+        setCursorPos(prev => ({ x: 50 + (to - from) * t * 0.55, y: prev.y }));
         if (t < 1) animFrame = requestAnimationFrame(step);
       }
       animFrame = requestAnimationFrame(step);
-    }, 7000));
+    }, 7500));
     // 9s: done
     timers.push(setTimeout(() => { setPhase(5); setCursorVisible(false); }, 9000));
     return () => { timers.forEach(clearTimeout); if (animFrame) cancelAnimationFrame(animFrame); };
@@ -1220,6 +1222,12 @@ function TrialForm2AFC({
   const ready = choice !== null && sliderMoved;
 
   function handleChoice(val) {
+    if (val !== choice) {
+      // switching selection — reset confidence
+      setConfidence(50);
+      setSliderMoved(false);
+      sliderFirstMoveMs.current = null;
+    }
     setChoice(val);
     choiceAtMs.current = Date.now();
     if (!firstChoiceAtMs.current) firstChoiceAtMs.current = Date.now();
